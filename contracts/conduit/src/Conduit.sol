@@ -279,4 +279,36 @@ contract Conduit {
 	}
 
 	mapping(address => Agent) public agents;
+
+	function _bit(Ability ability) internal pure returns (uint256) {
+		return 1 << uint256(ability);
+	}
+
+	function _addAbility(address agent, Ability ability) internal {
+		agents[agent].abilities |= _bit(ability);
+	}
+
+	function _setAbilities(address agent, uint256 mask) internal {
+		agents[agent].abilities = mask;
+	}
+
+	function _removeAbility(address agent, Ability ability) internal {
+		agents[agent].abilities &= ~_bit(ability);
+	}
+
+	function _clearAbilities(address agent) internal {
+		agents[agent].abilities = 0;
+	}
+
+	function _hasAbility(address agent, Ability ability) internal view returns (bool) {
+		return (agents[agent].abilities & _bit(ability)) != 0;
+	}
+
+	function _hasAllAbilities(address agent, uint256 mask) internal view returns (bool) {
+		return (agents[agent].abilities & mask) == mask;
+	}
+
+	function _hasAnyAbilities(address agent, uint256 mask) internal view returns (bool) {
+		return (agents[agent].abilities & mask) != 0;
+	}
 }
