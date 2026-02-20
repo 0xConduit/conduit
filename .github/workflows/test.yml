@@ -15,6 +15,9 @@ jobs:
 
     name: Foundry project
     runs-on: ubuntu-latest
+    defaults:
+      runs:
+        working-directory: contracts/conduit
     steps:
       - uses: actions/checkout@v4
         with:
