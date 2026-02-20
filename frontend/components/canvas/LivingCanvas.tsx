@@ -16,14 +16,8 @@ const edgeTypes = {
     routing: TopologyEdge,
 };
 
-// Structural layout for infrastructural components
-const initialLayout: Record<string, { x: number; y: number }> = {
-    'node-alpha': { x: 0, y: 0 },
-    'worker-v7': { x: 300, y: -150 },
-    'data-ingest': { x: -300, y: -150 },
-    'settlement-layer': { x: 0, y: 300 },
-    'worker-v2': { x: 400, y: 50 },
-};
+// Layout positions will be computed dynamically when real agents are loaded
+const initialLayout: Record<string, { x: number; y: number }> = {};
 
 export default function LivingCanvas() {
     const agents = useEconomyStore(state => state.agents);
