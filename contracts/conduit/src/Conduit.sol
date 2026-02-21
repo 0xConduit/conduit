@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity ^0.8.13;
 
-import { AgentNFT } from "./AgentNFT.sol";
-
 contract Conduit {
     enum Chain {
         BASE,
@@ -285,6 +283,7 @@ contract Conduit {
         bool accepted;
         bool rejected;
         bool completed;
+        string prompt;
     }
 
     mapping(address => Agent) public agents;
@@ -300,72 +299,6 @@ contract Conduit {
     event JobRefunded(uint256 indexed id, bytes32 attestation);
 
     uint256 counter = 0;
-
-	// ── AgentNFT ─────────────────────────────────────────────────────────────
-	AgentNFT public agentNFT;
-
-	// ── Task storage ──────────────────────────────────────────────────────────
-	struct Task {
-		uint256 id;
-		address requester;
-		address assignee;
-		uint256 payment;
-		bool completed;
-	}
-	mapping(uint256 => Task) public tasks;
-	uint256 public taskCounter;
-
-	// ── Events ────────────────────────────────────────────────────────────────
-	event AgentRegistered(address indexed agentAddress, bytes32 name, Chain chain, uint256 price, uint256 abilitiesMask);
-	event TaskCreated(uint256 indexed taskId, address indexed requester, address indexed assignee, uint256 payment);
-	event TaskCompleted(uint256 indexed taskId, address indexed assignee, uint256 reputationDelta);
-
-	// ── Constructor ───────────────────────────────────────────────────────────
-	constructor() {
-		agentNFT = new AgentNFT(address(this));
-	}
-
-	// ── Agent registration ────────────────────────────────────────────────────
-	function registerAgent(
-		bytes32 name,
-		Chain chain,
-		uint256 price,
-		uint256 abilitiesMask
-	) external {
-		require(!agents[msg.sender].exists, "Conduit: agent already registered");
-		agents[msg.sender] = Agent({
-			exists:     true,
-			name:       name,
-			chain:      chain,
-			price:      price,
-			reputation: 0,
-			abilities:  abilitiesMask
-		});
-		agentNFT.mint(msg.sender);
-		emit AgentRegistered(msg.sender, name, chain, price, abilitiesMask);
-	}
-
-	// ── Task lifecycle ────────────────────────────────────────────────────────
-	function createTask(address assignee, uint256 payment) external payable returns (uint256 taskId) {
-		require(agents[msg.sender].exists, "Conduit: requester not registered");
-		require(agents[assignee].exists,   "Conduit: assignee not registered");
-		require(payment > 0,               "Conduit: payment must be > 0");
-		require(msg.value == payment,      "Conduit: msg.value != payment");
-		taskId = taskCounter++;
-		tasks[taskId] = Task({ id: taskId, requester: msg.sender, assignee: assignee, payment: payment, completed: false });
-		emit TaskCreated(taskId, msg.sender, assignee, payment);
-	}
-
-	function completeTask(uint256 taskId, uint256 reputationDelta) external {
-		Task storage task = tasks[taskId];
-		require(task.requester == msg.sender, "Conduit: only requester can complete");
-		require(!task.completed,              "Conduit: task already completed");
-		task.completed = true;
-		agents[task.assignee].reputation += reputationDelta;
-		(bool success,) = task.assignee.call{value: task.payment}("");
-		require(success, "Conduit: ETH transfer failed");
-		emit TaskCompleted(taskId, task.assignee, reputationDelta);
-	}
 
     function _bit(Ability ability) internal pure returns (uint256) {
         uint256 a = uint256(ability);
@@ -464,8 +397,9 @@ contract Conduit {
         emit AgentDeregistered(msg.sender);
     }
 
-    function rentAgent(address agent_, uint256 mins) public payable returns (uint256) {
+    function rentAgent(address agent_, uint256 mins, string calldata prompt) public payable returns (uint256) {
         require(mins > 0, "Invalid minutes");
+        require(bytes(prompt).length <= 200, "Invalid prompt");
         Agent storage agent = agents[agent_];
         require(agent.exists, "Agent is not registered");
         uint256 amount = agent.price * mins;
@@ -477,6 +411,7 @@ contract Conduit {
         job.accepted = false;
         job.rejected = false;
         job.completed = false;
+        job.prompt = prompt;
         counter++;
         emit JobCreated(counter - 1, agent_, msg.sender, mins, amount);
         uint256 refund = msg.value - amount;
