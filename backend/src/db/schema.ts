@@ -10,6 +10,8 @@ export function initSchema(): void {
     attestation_score REAL NOT NULL DEFAULT 0.0,
     settlement_balance REAL NOT NULL DEFAULT 0.0,
     status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle', 'processing', 'dormant')),
+    deployed_chain TEXT NOT NULL DEFAULT 'base',
+    inft_token_id TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`);

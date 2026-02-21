@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
-import type { AgentEntity, AgentRole } from "../shared/types.js";
+import type { AgentEntity, AgentRole, DeployedChain } from "../shared/types.js";
+import { zerogNFT } from "../chains/zerog.stub.js";
 
 function rowToAgent(row: Record<string, unknown>): AgentEntity {
   return {
@@ -9,6 +10,8 @@ function rowToAgent(row: Record<string, unknown>): AgentEntity {
     attestationScore: row.attestation_score as number,
     settlementBalance: row.settlement_balance as number,
     status: row.status as AgentEntity["status"],
+    deployedChain: (row.deployed_chain as DeployedChain) ?? "base",
+    inftTokenId: (row.inft_token_id as string) || undefined,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -16,18 +19,32 @@ function rowToAgent(row: Record<string, unknown>): AgentEntity {
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-export function registerAgent(params: {
+export async function registerAgent(params: {
   id?: string;
   role: AgentRole;
   capabilities: string[];
-}): AgentEntity {
+  deployedChain?: DeployedChain;
+}): Promise<AgentEntity> {
   const db = getDb();
   const now = Date.now();
   const id = params.id || `agent-${generateId()}`;
+  const chain: DeployedChain = params.deployedChain ?? "base";
 
   db.prepare(
-    "INSERT INTO agents (id, role, capabilities, attestation_score, settlement_balance, status, created_at, updated_at) VALUES (?, ?, ?, 0.5, 0, 'idle', ?, ?)"
-  ).run(id, params.role, JSON.stringify(params.capabilities), now, now);
+    "INSERT INTO agents (id, role, capabilities, attestation_score, settlement_balance, status, deployed_chain, inft_token_id, created_at, updated_at) VALUES (?, ?, ?, 0.5, 0, 'idle', ?, NULL, ?, ?)"
+  ).run(id, params.role, JSON.stringify(params.capabilities), chain, now, now);
+
+  // Mint an INFT identity token for every agent on every chain
+  try {
+    const nftResult = await zerogNFT.mintAgentNFT({
+      agentId: id,
+      metadata: { role: params.role, capabilities: params.capabilities, chain },
+    });
+    db.prepare("UPDATE agents SET inft_token_id = ? WHERE id = ?").run(nftResult.tokenId, id);
+    console.log(`[conduit] INFT minted for ${id}: tokenId=${nftResult.tokenId} txHash=${nftResult.txHash}`);
+  } catch (err) {
+    console.warn(`[conduit] INFT mint failed for ${id}:`, err);
+  }
 
   return getAgent(id)!;
 }

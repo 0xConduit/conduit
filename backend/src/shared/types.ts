@@ -1,6 +1,7 @@
 // Shared TypeScript types — mirrors frontend store interfaces
 
 export type AgentRole = "router" | "executor" | "settler";
+export type DeployedChain = "base" | "hedera" | "zerog" | "0g";
 
 export interface AgentEntity {
   id: string;
@@ -9,6 +10,8 @@ export interface AgentEntity {
   attestationScore: number; // 0.0 to 1.0
   settlementBalance: number;
   status: "idle" | "processing" | "dormant";
+  deployedChain: DeployedChain;
+  inftTokenId?: string;       // INFT token ID from AgentNFT contract (0G chain)
   createdAt: number;
   updatedAt: number;
 }
