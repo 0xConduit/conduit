@@ -72,10 +72,11 @@ export default function LivingCanvas() {
 
     const edges: Edge[] = useMemo(() => {
         return (Object.values(connections) as NetworkConnection[]).map(conn => ({
-            id:     conn.id,
+            id: conn.id,
             source: conn.sourceAgentId,
             target: conn.targetAgentId,
-            type:   'routing',
+            type: 'routing',
+            animated: true,
         }));
     }, [connections]);
 
