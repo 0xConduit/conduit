@@ -15,5 +15,12 @@ contract ConduitScript is Script {
         conduit = new Conduit();
 
         vm.stopBroadcast();
+
+        console.log("===========================================");
+        console.log("Conduit:  ", address(conduit));
+        console.log("AgentNFT: ", address(conduit.agentNFT()));
+        console.log("===========================================");
+        console.log("Add to backend/.env:");
+        console.log("AGENT_NFT_ADDRESS=", address(conduit.agentNFT()));
     }
 }
