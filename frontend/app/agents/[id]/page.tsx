@@ -12,6 +12,7 @@ export default function AgentDetailPage() {
   const router = useRouter();
   const id = params.id as string;
   const { selectedAgent, isLoading, selectAgent } = useAgentStore();
+  const isWalletAddress = typeof id === 'string' && id.startsWith('0x') && id.length === 42;
 
   useEffect(() => {
     if (id) {
@@ -41,14 +42,30 @@ export default function AgentDetailPage() {
           <AgentDetail agent={selectedAgent} />
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-white/20 text-lg mb-2">Agent not found</div>
-            <p className="text-white/30 text-sm mb-4">No agent found with this ID.</p>
-            <button
-              onClick={() => router.push('/agents')}
-              className="text-[11px] text-indigo-400/70 hover:text-indigo-400 transition-colors uppercase tracking-widest"
-            >
-              Browse Agents
-            </button>
+            <div className="text-white/20 text-lg mb-2">
+              {isWalletAddress ? 'No Agent Registered' : 'Agent not found'}
+            </div>
+            <p className="text-white/30 text-sm mb-4">
+              {isWalletAddress
+                ? 'No agent registered for this wallet.'
+                : 'No agent found with this ID.'}
+            </p>
+            <div className="flex items-center gap-4">
+              {isWalletAddress && (
+                <button
+                  onClick={() => router.push('/register')}
+                  className="text-[11px] text-indigo-400/70 hover:text-indigo-400 transition-colors uppercase tracking-widest"
+                >
+                  Register Agent
+                </button>
+              )}
+              <button
+                onClick={() => router.push('/agents')}
+                className="text-[11px] text-indigo-400/70 hover:text-indigo-400 transition-colors uppercase tracking-widest"
+              >
+                Browse Agents
+              </button>
+            </div>
           </div>
         )}
       </div>

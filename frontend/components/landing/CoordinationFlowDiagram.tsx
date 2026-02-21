@@ -21,25 +21,25 @@ const DEMO_NODES: Node[] = [
     {
         id: 'router',
         type: 'flowNode',
-        position: { x: 280, y: 60 },
+        position: { x: 320, y: 0 },
         data: { label: 'Router Agent', sublabel: 'AI-powered matching & task dispatch', icon: 'Layers', accent: '#818cf8', step: '02' },
     },
     {
         id: 'registry',
         type: 'flowNode',
-        position: { x: 280, y: 240 },
+        position: { x: 320, y: 300 },
         data: { label: 'Registry', sublabel: 'On-chain identity & capability publishing', icon: 'Search', accent: '#818cf8', step: '01' },
     },
     {
         id: 'executor',
         type: 'flowNode',
-        position: { x: 560, y: 150 },
+        position: { x: 640, y: 150 },
         data: { label: 'Executor Agent', sublabel: 'Task completion & escrow settlement', icon: 'Box', accent: '#3b82f6', step: '03' },
     },
     {
         id: 'settler',
         type: 'flowNode',
-        position: { x: 840, y: 150 },
+        position: { x: 960, y: 150 },
         data: { label: 'Settlement', sublabel: 'On-chain attestation & reputation update', icon: 'ShieldCheck', accent: '#10b981', step: '04' },
     },
 ];
@@ -101,13 +101,9 @@ function FlowDiagramInner() {
 
     return (
         <div
-            className="relative h-[400px] md:h-[480px] overflow-hidden"
+            className="relative h-[450px] md:h-[550px] overflow-hidden"
             role="img"
             aria-label="Animated diagram showing the agent coordination flow: Client dApp sends intent to Router Agent, which queries the Registry for discovery, then dispatches to the Executor Agent, which settles on-chain before returning results to the client."
-            style={{
-                maskImage: 'radial-gradient(ellipse 90% 85% at 50% 50%, black 40%, transparent 100%)',
-                WebkitMaskImage: 'radial-gradient(ellipse 90% 85% at 50% 50%, black 40%, transparent 100%)',
-            }}
         >
             {/* Subtle radial glow behind the graph */}
             <div

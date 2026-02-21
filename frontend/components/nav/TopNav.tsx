@@ -11,13 +11,12 @@ interface TopNavProps {
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
-  { href: '/agents', label: 'Agents' },
+  { href: '/agents', label: 'Economy' },
   { href: '/register', label: 'Register' },
-  { href: '/dashboard', label: 'Dashboard' },
 ];
 
 export default function TopNav({ variant = 'solid' }: TopNavProps) {
-  const { authenticated, login, logout } = useAuth();
+  const { authenticated, login, logout, user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const isTransparent = variant === 'transparent';

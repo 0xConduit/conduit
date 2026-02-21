@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { PrivyProvider, usePrivy, useLogin, useLogout } from '@privy-io/react-auth';
 
 const privyAppId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -18,6 +18,8 @@ interface AuthState {
     logout: () => Promise<void>;
     loginError: string | null;
     clearLoginError: () => void;
+    isWalletOnlyUser: boolean;
+    refreshUser: () => Promise<void>;
 }
 
 const defaultAuth: AuthState = {
@@ -28,6 +30,8 @@ const defaultAuth: AuthState = {
     logout: async () => {},
     loginError: null,
     clearLoginError: () => {},
+    isWalletOnlyUser: false,
+    refreshUser: async () => {},
 };
 
 const AuthContext = createContext<AuthState>(defaultAuth);
@@ -38,7 +42,7 @@ export function useAuth() {
 
 /** Bridges usePrivy() into AuthContext when PrivyProvider is present */
 function PrivyAuthBridge({ children }: { children: ReactNode }) {
-    const { ready, authenticated, user } = usePrivy();
+    const { ready, authenticated, user, getAccessToken } = usePrivy();
     const [loginError, setLoginError] = useState<string | null>(null);
 
     const { login } = useLogin({
@@ -58,8 +62,20 @@ function PrivyAuthBridge({ children }: { children: ReactNode }) {
 
     const clearLoginError = () => setLoginError(null);
 
+    const isWalletOnlyUser = !!(
+        user?.wallet?.address &&
+        !user?.email?.address &&
+        !user?.google?.email &&
+        !user?.github?.username
+    );
+
+    const refreshUser = useCallback(async () => {
+        // Force a token refresh so the JWT reflects updated custom_metadata
+        await getAccessToken();
+    }, [getAccessToken]);
+
     return (
-        <AuthContext.Provider value={{ ready, authenticated, user, login, logout, loginError, clearLoginError }}>
+        <AuthContext.Provider value={{ ready, authenticated, user, login, logout, loginError, clearLoginError, isWalletOnlyUser, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

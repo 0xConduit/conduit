@@ -16,15 +16,16 @@ export enum AgentStatus {
   DORMANT = "DORMANT",
 }
 
+export type LoginMethod = "email" | "google" | "github" | "wallet";
+
 export interface User {
   id: string;
-  privy_did: string;
   email: string | null;
   display_name: string | null;
   wallet_address: string | null;
   role: UserRole;
-  created_at: string;
-  updated_at: string;
+  login_method: LoginMethod;
+  onboarded: boolean;
 }
 
 export interface Agent {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Routes that require authentication
 const PROTECTED_API = /^\/api\/(?!health)/;
-const PROTECTED_PAGES = ["/dashboard", "/register", "/agents"];
+const PROTECTED_PAGES: string[] = [];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -22,5 +22,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/dashboard/:path*", "/register/:path*", "/agents", "/agents/:path*"],
+  matcher: ["/api/:path*"],
 };

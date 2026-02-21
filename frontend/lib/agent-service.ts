@@ -22,7 +22,7 @@ export async function fetchAgents(filters?: { role?: AgentRole; status?: AgentSt
   return data.agents as Agent[];
 }
 
-/** Fetch a single agent by Supabase UUID */
+/** Fetch a single agent by ID */
 export async function fetchAgent(id: string): Promise<Agent | null> {
   const res = await fetch(`/api/agents/${id}`);
   if (res.status === 404) return null;

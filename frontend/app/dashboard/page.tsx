@@ -10,26 +10,17 @@ import LivingCanvas from '../../components/canvas/LivingCanvas';
 import GlobalVitals from '../../components/hud/GlobalVitals';
 import EntityInspector from '../../components/hud/EntityInspector';
 import AgentDetail from '../../components/agent/AgentDetail';
-import type { Agent } from '../../lib/types';
+import type { Agent, User } from '../../lib/types';
 
 function truncateAddress(address: string) {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-interface DbUser {
-    id: string;
-    privyDid: string;
-    email: string | null;
-    displayName: string | null;
-    walletAddress: string | null;
-    role: string;
 }
 
 export default function DashboardPage() {
     const { ready, authenticated, user, logout } = useAuth();
     const router = useRouter();
     const [copied, setCopied] = useState(false);
-    const [dbUser, setDbUser] = useState<DbUser | null>(null);
+    const [apiUser, setApiUser] = useState<User | null>(null);
     const [myAgent, setMyAgent] = useState<Agent | null>(null);
     const [agentLoading, setAgentLoading] = useState(true);
 
@@ -39,32 +30,32 @@ export default function DashboardPage() {
         }
     }, [ready, authenticated, router]);
 
-    // Sync with backend on mount (JIT user creation)
+    // Fetch user profile from API
     useEffect(() => {
         if (!authenticated) return;
         fetch('/api/auth/me')
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
-                if (data?.user) setDbUser(data.user);
+                if (data?.user) setApiUser(data.user);
             })
             .catch(() => {});
     }, [authenticated]);
 
-    // Fetch current user's agent from API
+    // Fetch current user's agents from API
     useEffect(() => {
-        if (!authenticated || !dbUser) return;
+        if (!authenticated || !apiUser) return;
         setAgentLoading(true);
         fetch('/api/agents')
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
                 if (data?.agents) {
-                    const mine = (data.agents as Agent[]).find(a => a.owner_id === dbUser.id);
+                    const mine = (data.agents as Agent[]).find(a => a.owner_id === apiUser.id);
                     setMyAgent(mine ?? null);
                 }
             })
             .catch(() => {})
             .finally(() => setAgentLoading(false));
-    }, [authenticated, dbUser]);
+    }, [authenticated, apiUser]);
 
     const handleCopyWallet = async () => {
         const address = user?.wallet?.address;
@@ -88,7 +79,7 @@ export default function DashboardPage() {
         );
     }
 
-    const displayName = dbUser?.displayName || user?.email?.address || user?.google?.email || user?.github?.username || 'User';
+    const displayName = apiUser?.display_name || user?.email?.address || user?.google?.email || user?.github?.username || 'User';
     const walletAddress = user?.wallet?.address;
     const initials = displayName.charAt(0).toUpperCase();
 
@@ -149,7 +140,7 @@ export default function DashboardPage() {
                         <div className="flex-1 min-w-0">
                             <div className="text-sm text-white/90 truncate">{displayName}</div>
                             <div className="text-[10px] text-white/30 uppercase tracking-widest">
-                                {dbUser ? `${dbUser.role} · synced` : 'Authenticated'}
+                                Authenticated
                             </div>
                         </div>
                     </div>
