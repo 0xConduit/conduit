@@ -29,6 +29,127 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ─── Dashboard Background: Aurora blobs ─── */
+
+.aurora-container {
+  filter: blur(80px);
+  opacity: 0.5;
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.aurora-blob-1 {
+  width: 600px;
+  height: 600px;
+  top: -10%;
+  left: 15%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(99, 102, 241, 0) 70%);
+  animation: aurora-drift-1 25s ease-in-out infinite;
+}
+
+.aurora-blob-2 {
+  width: 500px;
+  height: 500px;
+  bottom: -5%;
+  right: 10%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.25) 0%, rgba(139, 92, 246, 0) 70%);
+  animation: aurora-drift-2 30s ease-in-out infinite;
+}
+
+.aurora-blob-3 {
+  width: 450px;
+  height: 450px;
+  top: 40%;
+  right: 30%;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.2) 0%, rgba(79, 70, 229, 0) 70%);
+  animation: aurora-drift-3 20s ease-in-out infinite;
+}
+
+.aurora-blob-4 {
+  width: 350px;
+  height: 350px;
+  bottom: 20%;
+  left: 5%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0) 70%);
+  animation: aurora-drift-4 22s ease-in-out infinite;
+}
+
+@keyframes aurora-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(80px, 60px) scale(1.1); }
+  50% { transform: translate(-40px, 100px) scale(0.95); }
+  75% { transform: translate(60px, -40px) scale(1.05); }
+}
+
+@keyframes aurora-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-60px, -80px) scale(1.08); }
+  50% { transform: translate(50px, -30px) scale(0.92); }
+  75% { transform: translate(-80px, 50px) scale(1.04); }
+}
+
+@keyframes aurora-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(70px, -50px) scale(1.12); }
+  66% { transform: translate(-50px, 70px) scale(0.9); }
+}
+
+@keyframes aurora-drift-4 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  30% { transform: translate(40px, 80px) scale(1.06); }
+  60% { transform: translate(-60px, -40px) scale(0.96); }
+}
+
+/* ─── Scan line ─── */
+
+.scan-line {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 49%,
+    rgba(130, 140, 248, 0.03) 50%,
+    transparent 51%,
+    transparent 100%
+  );
+  background-size: 100% 4px;
+  animation: scan-move 8s linear infinite;
+  opacity: 0.5;
+}
+
+@keyframes scan-move {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+/* ─── Radial pulse ─── */
+
+.radial-pulse {
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(99, 102, 241, 0.08) 0%,
+    rgba(99, 102, 241, 0.02) 30%,
+    transparent 60%
+  );
+  animation: pulse-glow 6s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* ─── Noise texture ─── */
+
+.noise-texture {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+}
+
+/* ─── Reduced motion ─── */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

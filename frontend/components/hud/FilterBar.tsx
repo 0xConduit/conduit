@@ -135,7 +135,7 @@ export default function FilterBar() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium backdrop-blur-md transition-all ${
                     hasActiveFilter
                         ? 'bg-violet-500/20 border-violet-400/40 text-violet-300'
-                        : 'bg-[#0a0a0c]/80 border-white/10 text-white/60 hover:border-white/20 hover:text-white/80'
+                        : 'bg-[#0a0b14]/70 border-indigo-500/[0.08] text-white/60 hover:border-indigo-500/20 hover:text-white/80 backdrop-blur-xl'
                 }`}
             >
                 <Filter className="w-3.5 h-3.5" />
@@ -149,7 +149,7 @@ export default function FilterBar() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -8, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
-                        className="bg-[#0e0e12]/95 border border-white/10 rounded-xl p-4 backdrop-blur-xl shadow-2xl w-[340px] max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
+                        className="bg-[#0a0b14]/80 border border-indigo-500/[0.08] rounded-xl p-4 backdrop-blur-xl shadow-2xl shadow-indigo-500/5 w-[340px] max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10"
                     >
                         {/* ── On-Chain Filters ── */}
                         <div className="text-[9px] uppercase tracking-[0.2em] text-violet-400/60 font-bold mb-2">On-Chain (Contract)</div>

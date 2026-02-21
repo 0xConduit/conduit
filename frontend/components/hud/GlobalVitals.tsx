@@ -105,8 +105,8 @@ export default function GlobalVitals() {
             animate={{ opacity: 1, y: 0 }}
             className="absolute top-6 left-20 z-10 font-mono"
         >
-            <div className="bg-[#0a0a0c] border border-white/10 p-5 w-64 shadow-2xl relative">
-                <div className="absolute top-0 left-0 w-full h-[2px] bg-white/20" />
+            <div className="bg-[#0a0b14]/70 backdrop-blur-xl border border-indigo-500/[0.08] p-5 w-64 shadow-2xl shadow-indigo-500/5 relative rounded-sm">
+                <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent" />
 
                 <div className="flex items-center gap-2 mb-6">
                     <Activity className="w-4 h-4 text-white/50" />
@@ -223,7 +223,7 @@ export default function GlobalVitals() {
 
             {/* Wallet identity */}
             {walletAddress && (
-                <div className="mt-2 bg-[#0a0a0c] border border-white/10 p-4 w-64 shadow-2xl relative">
+                <div className="mt-2 bg-[#0a0b14]/70 backdrop-blur-xl border border-indigo-500/[0.08] p-4 w-64 shadow-2xl shadow-indigo-500/5 relative rounded-sm">
                     <div className="flex items-center gap-2 mb-3">
                         <Wallet className="w-4 h-4 text-white/50" />
                         <h2 className="text-xs font-semibold tracking-[0.2em] text-white/90">IDENTITY</h2>

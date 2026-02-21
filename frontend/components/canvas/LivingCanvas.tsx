@@ -143,7 +143,7 @@ export default function LivingCanvas() {
     if (rfNodes.length === 0) return null;
 
     return (
-        <div className="absolute inset-0 w-full h-full bg-[#0a0a0c] -z-10 font-mono">
+        <div className="absolute inset-0 w-full h-full -z-10 font-mono" style={{ background: 'transparent' }}>
             <ReactFlow
                 nodes={rfNodes}
                 edges={edges}
@@ -154,13 +154,13 @@ export default function LivingCanvas() {
                 edgeTypes={edgeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.2 }}
-                className="bg-[#0a0a0c]"
+                style={{ background: 'transparent' }}
                 nodesDraggable={true}
                 nodesConnectable={false}
                 elementsSelectable={true}
                 proOptions={{ hideAttribution: true }}
             >
-                <Background color="rgba(255,255,255,0.03)" gap={20} size={1} />
+                <Background color="rgba(130,140,248,0.035)" gap={20} size={1} />
             </ReactFlow>
         </div>
     );

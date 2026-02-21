@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import LivingCanvas from '../../components/canvas/LivingCanvas';
+import DashboardBackground from '../../components/canvas/DashboardBackground';
 import GlobalVitals from '../../components/hud/GlobalVitals';
 import EntityInspector from '../../components/hud/EntityInspector';
 import ActivityStrip from '../../components/hud/ActivityStrip';
@@ -30,29 +31,29 @@ export default function Dashboard() {
 
     if (!ready || !authenticated) {
         return (
-            <main className="relative w-full min-h-screen bg-[#0a0a0c] text-white font-mono flex items-center justify-center">
-                <span className="text-white/40 text-sm">Loading...</span>
+            <main className="relative w-full min-h-screen bg-[#06060a] text-white font-mono flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin" />
+                    <span className="text-white/40 text-sm tracking-wider">INITIALIZING</span>
+                </div>
             </main>
         );
     }
 
     return (
-        <main className="relative w-full min-h-screen bg-[#0a0a0c] text-white font-mono overflow-hidden">
-            <div className="fixed inset-0 z-0">
+        <main className="relative w-full min-h-screen bg-[#06060a] text-white font-mono overflow-hidden">
+            {/* Animated background layers */}
+            <DashboardBackground />
+
+            <div className="fixed inset-0 z-[2]">
                 <LivingCanvas />
             </div>
-
-            {/* Background grid */}
-            <div className="fixed inset-0 z-[1] pointer-events-none" style={{
-                backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
-                backgroundSize: '48px 48px',
-            }} />
 
             {/* Left sidebar */}
             <motion.nav
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="fixed top-0 left-0 z-50 h-full w-14 flex flex-col items-center py-5 gap-4 bg-[#0a0a0c]/80 border-r border-white/[0.06] backdrop-blur-md"
+                className="fixed top-0 left-0 z-50 h-full w-14 flex flex-col items-center py-5 gap-4 bg-[#06060a]/70 border-r border-indigo-500/[0.08] backdrop-blur-xl"
             >
                 <Image
                     src="/conduit-logo.png"

@@ -35,10 +35,35 @@ export const TopologyEdge = memo(({
     // rendered geometry of the named path element in the same SVG coordinate space.
     const pathId = `motion-path-${id}`;
 
+    const glowId = `edge-glow-${id}`;
+    const isActive = activePulses.length > 0;
+
     return (
         <>
+            {/* SVG filter for edge glow */}
+            <defs>
+                <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2" result="blur" />
+                    <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                </filter>
+            </defs>
+
             {/* Hidden path element used only as the motion track for <mpath> */}
             <path id={pathId} d={edgePath} fill="none" stroke="none" />
+
+            {/* Glow underlay when active */}
+            {isActive && (
+                <path
+                    d={edgePath}
+                    fill="none"
+                    stroke="rgba(130,140,248,0.15)"
+                    strokeWidth={6}
+                    filter={`url(#${glowId})`}
+                />
+            )}
 
             <BaseEdge
                 path={edgePath}
@@ -46,7 +71,7 @@ export const TopologyEdge = memo(({
                 className="transition-colors duration-300"
                 style={{
                     ...style,
-                    stroke: activePulses.length > 0 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)',
+                    stroke: isActive ? 'rgba(130,140,248,0.5)' : 'rgba(130,140,248,0.12)',
                     strokeWidth: 1.5,
                     strokeDasharray: '4 4',
                 }}
@@ -58,8 +83,8 @@ export const TopologyEdge = memo(({
                     pulse.pulseType === 'task_routed'     ? '#3b82f6' :
                                                             '#94a3b8';
                 return (
-                    <g key={pulse.id}>
-                        <rect width={14} height={6} x={-7} y={-3} fill={color} rx={1}>
+                    <g key={pulse.id} filter={`url(#${glowId})`}>
+                        <rect width={14} height={6} x={-7} y={-3} fill={color} rx={2} opacity={0.9}>
                             <animateMotion
                                 dur="2.5s"
                                 calcMode="linear"

@@ -20,7 +20,7 @@ export default function EntityInspector() {
                     transition={{ duration: 0.12 }}
                     className="absolute top-6 right-6 z-10 w-80 font-mono"
                 >
-                    <div className="bg-[#0a0a0c] border border-white/10 p-5 shadow-2xl relative">
+                    <div className="bg-[#0a0b14]/70 backdrop-blur-xl border border-indigo-500/[0.08] p-5 shadow-2xl shadow-indigo-500/5 relative rounded-sm">
                         {/* Structural Accent highlight based on Role */}
                         <div className={`absolute top-0 right-0 w-[2px] h-full ${agent.role === 'router' ? 'bg-blue-500' : agent.role === 'settler' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
 

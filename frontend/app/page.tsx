@@ -3,6 +3,7 @@
 import { useEconomyStore } from '../store/useEconomyStore';
 import { AnimatePresence, motion } from 'framer-motion';
 import LivingCanvas from '../components/canvas/LivingCanvas';
+import DashboardBackground from '../components/canvas/DashboardBackground';
 import GlobalVitals from '../components/hud/GlobalVitals';
 import EntityInspector from '../components/hud/EntityInspector';
 import LandingOverlay from '../components/hud/LandingOverlay';
@@ -23,8 +24,11 @@ export default function Home() {
     }, [viewMode]);
 
     return (
-        <main className={`relative w-full min-h-screen bg-[#0a0a0c] text-white font-mono ${viewMode === 'explore' ? 'overflow-hidden' : ''}`}>
-            <div className="fixed inset-0 z-0">
+        <main className={`relative w-full min-h-screen bg-[#06060a] text-white font-mono ${viewMode === 'explore' ? 'overflow-hidden' : ''}`}>
+            {/* Animated background layers */}
+            <DashboardBackground />
+
+            <div className="fixed inset-0 z-[2]">
                 <LivingCanvas />
             </div>
 

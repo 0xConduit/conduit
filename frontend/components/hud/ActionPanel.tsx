@@ -24,7 +24,7 @@ const STATUS_COLOR: Record<Task['status'], string> = {
 
 // ── Shared style constants ─────────────────────────────────────────────────────
 const inputCls  = "w-full bg-white/5 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white/80 placeholder-white/20 focus:outline-none focus:border-white/30";
-const selectCls = "w-full bg-[#0a0a0c] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white/80 focus:outline-none focus:border-white/30";
+const selectCls = "w-full bg-[#0a0b14]/80 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white/80 focus:outline-none focus:border-white/30";
 const labelCls  = "block text-[10px] text-white/40 uppercase tracking-widest mb-1";
 const sectionCls = "border border-white/10 rounded-md p-3 space-y-2.5 bg-white/[0.02]";
 
@@ -1223,7 +1223,7 @@ export default function ActionPanel() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
                         transition={{ duration: 0.18 }}
-                        className="fixed bottom-28 right-6 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                        className="fixed bottom-28 right-6 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0b14]/70 backdrop-blur-xl border border-indigo-500/[0.08] rounded-xl shadow-2xl shadow-indigo-500/5 overflow-hidden"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/10 shrink-0">
