@@ -9,7 +9,7 @@ const CHAINS: { value: DeployedChain; label: string; description: string; color:
     { value: 'base',   label: 'Base',   description: 'Coinbase L2 — EVM-compatible',  color: 'text-blue-400',    dot: 'bg-blue-400' },
     { value: 'hedera', label: 'Hedera', description: 'Hashgraph — fast finality',      color: 'text-purple-400',  dot: 'bg-purple-400' },
     { value: 'zerog',  label: '0G',     description: '0G Chain — INFT identity token', color: 'text-emerald-400', dot: 'bg-emerald-400' },
-    { value: '0g',     label: '0G AI',  description: '0G AI — inference + INFT',       color: 'text-emerald-300', dot: 'bg-emerald-300' },
+    { value: 'kite', label: 'Kite', description: 'Kite AI — x402 micropayments',       color: 'text-emerald-300', dot: 'bg-emerald-300' },
 ];
 const CHAIN_MAP = Object.fromEntries(CHAINS.map(c => [c.value, c]));
 
