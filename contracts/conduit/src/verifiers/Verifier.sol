@@ -62,7 +62,6 @@ contract Verifier is
 
         __AccessControl_init();
         __Pausable_init();
-        __ReentrancyGuard_init();
 
         VerifierStorage storage $ = _getVerifierStorage();
         for (uint256 i = 0; i < _attestationConfigs.length; i++) {

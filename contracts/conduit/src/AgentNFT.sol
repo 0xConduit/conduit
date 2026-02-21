@@ -94,7 +94,6 @@ contract AgentNFT is
         require(admin_ != address(0), "Invalid admin address");
 
         __AccessControl_init();
-        __ReentrancyGuard_init();
         __Pausable_init();
         __ERC7857_init(name_, symbol_, verifierAddr);
 
