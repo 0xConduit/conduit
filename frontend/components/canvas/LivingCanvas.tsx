@@ -72,10 +72,11 @@ export default function LivingCanvas() {
 
     const edges: Edge[] = useMemo(() => {
         return (Object.values(connections) as NetworkConnection[]).map(conn => ({
-            id:     conn.id,
+            id: conn.id,
             source: conn.sourceAgentId,
             target: conn.targetAgentId,
-            type:   'routing',
+            type: 'routing',
+            animated: true,
         }));
     }, [connections]);
 
@@ -96,37 +97,6 @@ export default function LivingCanvas() {
         const interval = setInterval(() => networkTick(), 500);
         return () => clearInterval(interval);
     }, [networkTick]);
-
-    const nodes: Node[] = useMemo(() => {
-        const list = (Object.values(agents) as AgentEntity[]).sort((a, b) => a.id.localeCompare(b.id));
-        const occupied: { x: number; y: number }[] = Object.values(initialLayout);
-        const positions: Record<string, { x: number; y: number }> = { ...initialLayout };
-
-        return list.map(agent => {
-            let position = positions[agent.id];
-            if (position === undefined) {
-                position = findNonOverlappingPosition(occupied);
-                positions[agent.id] = position;
-                occupied.push(position);
-            }
-            return {
-                id: agent.id,
-                type: 'infrastructure',
-                position,
-                data: { ...agent } as Record<string, unknown>,
-            };
-        });
-    }, [agents]);
-
-    const edges: Edge[] = useMemo(() => {
-        return (Object.values(connections) as NetworkConnection[]).map(conn => ({
-            id: conn.id,
-            source: conn.sourceAgentId,
-            target: conn.targetAgentId,
-            type: 'routing',
-            animated: true, // Subtle standard dashed animation fallback
-        }));
-    }, [connections]);
 
     const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
         const newId = params.nodes.length > 0 ? params.nodes[0].id : null;
