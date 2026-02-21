@@ -7,6 +7,7 @@ import GlobalVitals from '../components/hud/GlobalVitals';
 import EntityInspector from '../components/hud/EntityInspector';
 import LandingOverlay from '../components/hud/LandingOverlay';
 import ActivityStrip from '../components/hud/ActivityStrip';
+import ActionPanel from '../components/hud/ActionPanel';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect } from 'react';
 
@@ -56,6 +57,8 @@ export default function Home() {
                         </button>
                         <GlobalVitals />
                         <EntityInspector />
+                        <ActivityStrip />
+                        <ActionPanel />
                     </motion.div>
                 )}
             </AnimatePresence>
