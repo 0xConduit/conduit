@@ -268,6 +268,7 @@ contract Conduit {
     }
 
     struct Agent {
+        address agent;
         bytes32 name;
         uint256 price;
         uint256 reputation;
@@ -277,6 +278,7 @@ contract Conduit {
     }
 
     struct Job {
+        uint256 id;
         address agent;
         address renter;
         uint256 amount;
@@ -287,6 +289,10 @@ contract Conduit {
         string prompt;
     }
 
+    address[] private agentList;
+    mapping(address => uint256) private agentIndex;
+    mapping(address => uint256[]) private agentJobs;
+
     mapping(address => Agent) public agents;
     mapping(uint256 => Job) public jobs;
 
@@ -296,8 +302,8 @@ contract Conduit {
     event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount);
     event JobAccepted(uint256 indexed id);
     event JobRejected(uint256 indexed id);
-    event JobCompleted(uint256 indexed id);
-    event JobRefunded(uint256 indexed id, bytes32 attestation);
+    event JobCompleted(uint256 indexed id, bytes32 attestation);
+    event JobRefunded(uint256 indexed id);
 
     uint256 counter = 0;
 
@@ -340,11 +346,14 @@ contract Conduit {
         Agent storage agent = agents[msg.sender];
         require(!agent.exists, "Agent is already registered");
         agent.exists = true;
+        agent.agent = msg.sender;
         agent.name = name;
         agent.chain = chain;
         agent.price = price;
         agent.reputation = 0;
         agent.abilities = abilities;
+        agentList.push(msg.sender);
+        agentIndex[msg.sender] = agentList.length;
         emit AgentRegistered(msg.sender, name, chain, price, abilities);
     }
 
@@ -394,6 +403,17 @@ contract Conduit {
     function deregister() public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
+        if (agentIndex[msg.sender] != 0) {
+            uint256 i = agentIndex[msg.sender] - 1;
+            uint256 last = agentList.length - 1;
+            if (i != last) {
+                address lastAddress = agentList[last];
+                agentList[i] = lastAddress;
+                agentIndex[lastAddress] = i + 1;
+            }
+            agentList.pop();
+            agentIndex[msg.sender] = 0;
+        }
         delete agents[msg.sender];
         emit AgentDeregistered(msg.sender);
     }
@@ -406,6 +426,7 @@ contract Conduit {
         uint256 amount = agent.price * mins;
         require(msg.value >= amount, "Insufficient funds");
         Job storage job = jobs[counter];
+        job.id = counter;
         job.agent = agent_;
         job.renter = msg.sender;
         job.amount = amount;
@@ -413,6 +434,7 @@ contract Conduit {
         job.rejected = false;
         job.completed = false;
         job.prompt = prompt;
+        agentJobs[agent_].push(counter);
         counter++;
         emit JobCreated(counter - 1, agent_, msg.sender, mins, amount);
         uint256 refund = msg.value - amount;
@@ -475,5 +497,55 @@ contract Conduit {
         (bool ok,) = payable(job.renter).call{value: job.amount}("");
         require(ok, "Failed to refund payment to renter");
         emit JobRefunded(id);
+    }
+
+    function getAllAgents() external view returns (Agent[] memory out) {
+        uint256 total = agentList.length;
+        out = new Agent[](total);
+        for (uint256 i = 0; i < total; i++) {
+            out[i] = agents[agentList[i]];
+        }
+    }
+
+    function getAgentCount() external view returns (uint256) {
+        return agentList.length;
+    }
+
+    function getAgent(address agent) external view returns (Agent memory) {
+        return agents[agent];
+    }
+
+    function getJob(uint256 id) external view returns (Job memory) {
+        require(id < counter, "Invalid job");
+        return jobs[id];
+    }
+
+    function getAllJobs(address agent) external view returns (Job[] memory out) {
+        uint256[] storage allJobs = agentJobs[agent];
+        uint256 total = allJobs.length;
+        out = new Job[](total);
+        for (uint256 i = 0; i < total; i++) {
+            out[i] = jobs[allJobs[i]];
+        }
+    }
+
+    function getOpenJobs(address agent) external view returns (Job[] memory out) {
+        uint256 total = 0;
+        uint256[] storage allJobs = agentJobs[agent];
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            Job storage job = jobs[allJobs[i]];
+            if (!job.accepted && !job.rejected && !job.completed) {
+                total++;
+            }
+        }
+        out = new Job[](total);
+        uint256 j = 0;
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            Job storage job = jobs[allJobs[i]];
+            if (!job.accepted && !job.rejected && !job.completed) {
+                out[j] = job;
+                j++;
+            }
+        }
     }
 }
