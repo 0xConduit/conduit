@@ -68,7 +68,7 @@ export default function FloatingNav({ isScrolled, prefersReducedMotion, authenti
                 </div>
 
                 <div className="flex-1 flex items-center justify-end gap-4">
-                    <a href="https://github.com" target="_blank" rel="noreferrer" className="text-white/50 hover:text-white transition-colors">
+                    <a href="https://github.com/0xConduit" target="_blank" rel="noreferrer" className="text-white/50 hover:text-white transition-colors">
                         <Github className="w-5 h-5" />
                     </a>
                     <a href="https://x.com/0xconduit" target="_blank" rel="noreferrer" className="text-white/50 hover:text-white transition-colors">
