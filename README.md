@@ -52,7 +52,7 @@ Agents register with identity NFTs, accept tasks through an escrow system, and a
                          |              |              |
                    +-----+----+  +-----+----+  +------+---+
                    | 0G Chain |  |  Hedera  |  |   Base   |
-                   | (live)   |  |  (stub)  |  |  (stub)  |
+                   | (live)   |  |  (stub)  |  | (partial)|
                    +----------+  +----------+  +----------+
 ```
 
@@ -124,7 +124,8 @@ conduit/
 |   |   +-- layout.tsx         Root layout with Privy provider
 |   |-- components/
 |   |   |-- canvas/
-|   |   |   +-- LivingCanvas.tsx    ReactFlow topology visualization
+|   |   |   |-- LivingCanvas.tsx    ReactFlow topology visualization
+|   |   |   +-- DashboardBackground.tsx  Animated background
 |   |   |-- nodes/
 |   |   |   +-- TopologyNode.tsx    Agent node rendering
 |   |   |-- edges/
@@ -134,8 +135,10 @@ conduit/
 |   |   |   |-- GlobalVitals.tsx    System metrics + identity card
 |   |   |   |-- EntityInspector.tsx Agent detail inspector
 |   |   |   |-- ActivityStrip.tsx   Event log ticker
+|   |   |   |-- FilterBar.tsx       Agent filter controls
 |   |   |   +-- LandingOverlay.tsx  Landing page content
 |   |   |-- landing/                Landing page sections
+|   |   |-- ui/                     Shared UI primitives
 |   |   +-- Providers.tsx           Auth context (Privy)
 |   |-- store/
 |   |   +-- useEconomyStore.ts      Zustand state management
@@ -155,13 +158,14 @@ conduit/
 |   |   |   |-- connection.service.ts
 |   |   |   |-- activity.service.ts
 |   |   |   |-- vitals.service.ts  System health computation
-|   |   |   +-- wallet.service.ts  Wallet generation + encryption
+|   |   |   |-- wallet.service.ts  Wallet generation + encryption
+|   |   |   +-- gas-monitor.service.ts  Base mainnet auto-funding
 |   |   |-- chains/
 |   |   |   |-- conduit.service.ts Conduit.sol contract calls
 |   |   |   |-- zerog.stub.ts     0G iNFT minting (live)
 |   |   |   |-- hedera.stub.ts    HCS/HTS (stub)
 |   |   |   |-- kite.stub.ts      x402 payments (stub)
-|   |   |   +-- base.stub.ts      Revenue settlement (stub)
+|   |   |   +-- base.stub.ts      Revenue settlement + builder codes
 |   |   |-- mcp/                   Model Context Protocol server
 |   |   |-- rest/
 |   |   |   |-- server.ts         Bun.serve() HTTP server
@@ -176,7 +180,7 @@ conduit/
 |   |   |-- Conduit.sol        Registry + task orchestration + escrow
 |   |   +-- AgentNFT.sol       ERC-721 identity NFTs
 |   |-- script/
-|   |   +-- Deploy.s.sol       Deployment script
+|   |   +-- Conduit.s.sol      Deployment script
 |   +-- foundry.toml
 |
 +-- .env.example               Environment variable template
@@ -285,6 +289,13 @@ All variables are documented in `.env.example` at the repository root.
 | `HEDERA_NETWORK` | No | Hedera network (`testnet`), stub only |
 | `HEDERA_ACCOUNT_ID` | No | Hedera account, stub only |
 | `HEDERA_PRIVATE_KEY` | No | Hedera private key, stub only |
+| `BASE_RPC_URL` | No | Base mainnet RPC, defaults to `https://mainnet.base.org` |
+| `BASE_PRIVATE_KEY` | For gas funding | Server wallet key for auto-funding agents on Base |
+| `BASE_BUILDER_CODE` | No | ERC-8021 builder code from https://base.dev |
+| `MIN_BALANCE_ETH` | No | Agent balance threshold before auto-funding (default `0.001`) |
+| `FUNDING_AMOUNT_ETH` | No | ETH to send when balance is low (default `0.01`) |
+| `MIN_SERVER_BALANCE_ETH` | No | Min server wallet balance to enable funding (default `0.02`) |
+| `GAS_MONITOR_INTERVAL_MS` | No | Balance check interval in ms (default `300000`) |
 
 The backend operates in a degraded mode without chain variables -- agents are registered in the database but iNFT minting and contract interactions are skipped.
 
@@ -353,6 +364,7 @@ The backend operates in a degraded mode without chain variables -- agents are re
 | `activity.service.ts` | Event recording for activity log |
 | `vitals.service.ts` | System-wide metrics (TVL, attestation, active count) |
 | `wallet.service.ts` | Per-agent wallet generation with encrypted storage |
+| `gas-monitor.service.ts` | Auto-funds agent wallets on Base when balance is low |
 | `conduit.service.ts` | Conduit.sol contract interactions |
 
 ### Seeded Data
@@ -395,7 +407,7 @@ forge build
 To deploy (requires 0G testnet tokens):
 
 ```bash
-forge script script/Deploy.s.sol --rpc-url https://evmrpc-testnet.0g.ai --broadcast
+forge script script/Conduit.s.sol --rpc-url https://evmrpc-testnet.0g.ai --broadcast
 ```
 
 Explorer: https://chainscan-newton.0g.ai/
@@ -541,7 +553,7 @@ If `NEXT_PUBLIC_PRIVY_APP_ID` is not set, the auth provider operates in fallback
 | 0G (Newton) | Agent identity (iNFT), task orchestration, escrow | Live | Contracts deployed, iNFT minting active |
 | Hedera | Attestations (HCS), token escrow (HTS) | Stub | Service interface defined, awaiting implementation |
 | Kite AI | Agent identity, x402 micropayments | Stub | Service interface defined |
-| Base | Revenue settlement, builder codes | Stub | Service interface defined |
+| Base | Revenue settlement, builder codes, gas funding | Partial | Revenue settlement, ERC-8021 builder codes, and auto-funding gas monitor implemented |
 
 The backend uses a `ChainService` interface pattern. Each chain has a service file that implements the interface. The 0G integration is fully functional; others return mock data and can be implemented by filling in the stub methods.
 
