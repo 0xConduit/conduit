@@ -8,8 +8,10 @@ import GlobalVitals from '../../components/hud/GlobalVitals';
 import EntityInspector from '../../components/hud/EntityInspector';
 import ActivityStrip from '../../components/hud/ActivityStrip';
 import ActionPanel from '../../components/hud/ActionPanel';
+import FilterBar from '../../components/hud/FilterBar';
 import { useAuth } from '../../components/Providers';
-import { ArrowLeft, LayoutDashboard } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowLeft } from 'lucide-react';
 
 export default function Dashboard() {
     const { ready, authenticated } = useAuth();
@@ -52,6 +54,16 @@ export default function Dashboard() {
                 animate={{ opacity: 1, x: 0 }}
                 className="fixed top-0 left-0 z-50 h-full w-14 flex flex-col items-center py-5 gap-4 bg-[#0a0a0c]/80 border-r border-white/[0.06] backdrop-blur-md"
             >
+                <Image
+                    src="/conduit-logo.png"
+                    alt="Conduit"
+                    width={80}
+                    height={80}
+                    className="rounded-lg"
+                />
+
+                <div className="w-6 border-t border-white/[0.08]" />
+
                 <button
                     onClick={() => router.push('/')}
                     className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/[0.06] border border-white/10 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
@@ -59,18 +71,10 @@ export default function Dashboard() {
                 >
                     <ArrowLeft className="w-4 h-4" />
                 </button>
-
-                <div className="w-6 border-t border-white/[0.08]" />
-
-                <div
-                    className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 border border-white/[0.12] text-white/70"
-                    title="Dashboard"
-                >
-                    <LayoutDashboard className="w-4 h-4" />
-                </div>
             </motion.nav>
 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <FilterBar />
                 <GlobalVitals />
                 <EntityInspector />
                 <ActivityStrip />

@@ -34,6 +34,16 @@ export default function LivingCanvas() {
     const initializeNetwork = useEconomyStore(state => state.initializeNetwork);
     const networkTick       = useEconomyStore(state => state.networkTick);
     const setSelectedAgent  = useEconomyStore(state => state.setSelectedAgent);
+    const chainFilter       = useEconomyStore(state => state.chainFilter);
+    const registeredFilter  = useEconomyStore(state => state.registeredFilter);
+    const pausedFilter      = useEconomyStore(state => state.pausedFilter);
+    const roleFilter        = useEconomyStore(state => state.roleFilter);
+    const statusFilter      = useEconomyStore(state => state.statusFilter);
+    const attestationFilter = useEconomyStore(state => state.attestationFilter);
+    const balanceFilter     = useEconomyStore(state => state.balanceFilter);
+    const walletFilter      = useEconomyStore(state => state.walletFilter);
+    const inftFilter        = useEconomyStore(state => state.inftFilter);
+    const capabilityFilter  = useEconomyStore(state => state.capabilityFilter);
 
     const initialized        = useRef(false);
     const positionCache      = useRef<Record<string, { x: number; y: number }>>({});
@@ -48,12 +58,36 @@ export default function LivingCanvas() {
 
     const [rfNodes, setRfNodes] = useState<Node[]>([]);
 
+    const filteredAgents = useMemo(() => {
+        return (Object.values(agents) as AgentEntity[]).filter(agent => {
+            if (chainFilter !== 'all' && agent.deployedChain !== chainFilter) return false;
+            if (registeredFilter === 'registered' && !agent.conduitRegistered) return false;
+            if (registeredFilter === 'unregistered' && agent.conduitRegistered) return false;
+            if (pausedFilter === 'paused' && agent.status !== 'dormant') return false;
+            if (pausedFilter === 'active' && agent.status === 'dormant') return false;
+            if (roleFilter !== 'all' && agent.role !== roleFilter) return false;
+            if (statusFilter !== 'all' && agent.status !== statusFilter) return false;
+            if (attestationFilter === 'high' && agent.attestationScore < 0.9) return false;
+            if (attestationFilter === 'medium' && (agent.attestationScore < 0.5 || agent.attestationScore >= 0.9)) return false;
+            if (attestationFilter === 'low' && agent.attestationScore >= 0.5) return false;
+            if (balanceFilter === 'high' && agent.settlementBalance < 50000) return false;
+            if (balanceFilter === 'medium' && (agent.settlementBalance < 5000 || agent.settlementBalance >= 50000)) return false;
+            if (balanceFilter === 'low' && (agent.settlementBalance < 1 || agent.settlementBalance >= 5000)) return false;
+            if (balanceFilter === 'zero' && agent.settlementBalance > 0) return false;
+            if (walletFilter === 'yes' && !agent.walletAddress) return false;
+            if (walletFilter === 'no' && agent.walletAddress) return false;
+            if (inftFilter === 'yes' && !agent.inftTokenId) return false;
+            if (inftFilter === 'no' && agent.inftTokenId) return false;
+            if (capabilityFilter && !agent.capabilities.some(c => c.toLowerCase().includes(capabilityFilter.toLowerCase()))) return false;
+            return true;
+        });
+    }, [agents, chainFilter, registeredFilter, pausedFilter, roleFilter, statusFilter, attestationFilter, balanceFilter, walletFilter, inftFilter, capabilityFilter]);
+
     useEffect(() => {
-        const agentList = Object.values(agents) as AgentEntity[];
         setRfNodes(prev => {
             const prevById: Record<string, Node> = {};
             for (const n of prev) prevById[n.id] = n;
-            return agentList.map(agent => {
+            return filteredAgents.map(agent => {
                 const existing = prevById[agent.id];
                 return {
                     id:       agent.id,
@@ -63,21 +97,25 @@ export default function LivingCanvas() {
                 };
             });
         });
-    }, [agents]);
+    }, [filteredAgents]);
 
     const onNodesChange = useCallback((changes: NodeChange[]) => {
         setRfNodes(nds => applyNodeChanges(changes, nds));
     }, []);
 
+    const visibleIds = useMemo(() => new Set(rfNodes.map(n => n.id)), [rfNodes]);
+
     const edges: Edge[] = useMemo(() => {
-        return (Object.values(connections) as NetworkConnection[]).map(conn => ({
-            id: conn.id,
-            source: conn.sourceAgentId,
-            target: conn.targetAgentId,
-            type: 'routing',
-            animated: true,
-        }));
-    }, [connections]);
+        return (Object.values(connections) as NetworkConnection[])
+            .filter(conn => visibleIds.has(conn.sourceAgentId) && visibleIds.has(conn.targetAgentId))
+            .map(conn => ({
+                id: conn.id,
+                source: conn.sourceAgentId,
+                target: conn.targetAgentId,
+                type: 'routing',
+                animated: true,
+            }));
+    }, [connections, visibleIds]);
 
     useEffect(() => {
         if (initialized.current) return;

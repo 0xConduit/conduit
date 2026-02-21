@@ -27,6 +27,11 @@ import {
   conduitGetAllAgents,
   conduitGetAgentCount,
   conduitGetOpenJobs,
+  conduitPause,
+  conduitUnpause,
+  conduitGetAllActiveAgents,
+  conduitAddAbility,
+  conduitRemoveAbility,
 } from "../chains/conduit.service.js";
 import { getDb } from "../db/connection.js";
 import type { DeployedChain, AgentRole } from "../shared/types.js";
@@ -538,5 +543,73 @@ export const handlers: Record<string, Handler> = {
   "GET /api/contract/agents/count": async () => {
     const count = await conduitGetAgentCount();
     return json({ count });
+  },
+
+  // Get all active (non-paused) on-chain agents
+  "GET /api/contract/agents/active": async () => {
+    const agents = await conduitGetAllActiveAgents();
+    return json({ agents, count: agents.length });
+  },
+
+  // Pause agent on Conduit contract
+  "POST /api/agents/:id/contract/pause": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    const result = await conduitPause({ agentId: params.id, encryptedPrivateKey: encryptedKey });
+    return json({ txHash: result.txHash });
+  },
+
+  // Add a single ability to agent on Conduit contract
+  "POST /api/agents/:id/contract/add-ability": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.ability === undefined) return json({ error: "ability is required (0-255)" }, 400);
+    const ability = body.ability as number;
+    if (typeof ability !== "number" || ability < 0 || ability > 255) return json({ error: "ability must be 0-255" }, 400);
+
+    const result = await conduitAddAbility({ agentId: params.id, encryptedPrivateKey: encryptedKey, ability });
+    return json({ txHash: result.txHash });
+  },
+
+  // Remove a single ability from agent on Conduit contract
+  "POST /api/agents/:id/contract/remove-ability": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.ability === undefined) return json({ error: "ability is required (0-255)" }, 400);
+    const ability = body.ability as number;
+    if (typeof ability !== "number" || ability < 0 || ability > 255) return json({ error: "ability must be 0-255" }, 400);
+
+    const result = await conduitRemoveAbility({ agentId: params.id, encryptedPrivateKey: encryptedKey, ability });
+    return json({ txHash: result.txHash });
+  },
+
+  // Unpause agent on Conduit contract
+  "POST /api/agents/:id/contract/unpause": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    const result = await conduitUnpause({ agentId: params.id, encryptedPrivateKey: encryptedKey });
+    return json({ txHash: result.txHash });
   },
 };

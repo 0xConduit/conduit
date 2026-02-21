@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getAgent, getAgentWalletAddress } from "../../services/agent.service.js";
+import { getAgent, getAgentWalletAddress, getAgentEncryptedKey } from "../../services/agent.service.js";
 import {
   conduitGetAgent,
   conduitGetJob,
@@ -12,6 +12,11 @@ import {
   conduitGetAllAgents,
   conduitGetAgentCount,
   conduitGetOpenJobs,
+  conduitPause,
+  conduitUnpause,
+  conduitGetAllActiveAgents,
+  conduitAddAbility,
+  conduitRemoveAbility,
 } from "../../chains/conduit.service.js";
 
 export function registerContractTools(server: McpServer) {
@@ -193,6 +198,132 @@ export function registerContractTools(server: McpServer) {
       const jobs = await conduitGetOpenJobs(walletAddress);
       return {
         content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, walletAddress, openJobs: jobs }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_pause_agent",
+    "Pause an agent on the Conduit contract. Paused agents cannot be rented.",
+    {
+      agentId: z.string().describe("The system agent ID to pause"),
+    },
+    async (params) => {
+      const agent = getAgent(params.agentId);
+      if (!agent) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" not found` }],
+          isError: true,
+        };
+      }
+      const encryptedKey = getAgentEncryptedKey(params.agentId);
+      if (!encryptedKey) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" has no wallet` }],
+          isError: true,
+        };
+      }
+      const result = await conduitPause({ agentId: params.agentId, encryptedPrivateKey: encryptedKey });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, txHash: result.txHash }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_unpause_agent",
+    "Unpause an agent on the Conduit contract. Restores the agent's ability to be rented.",
+    {
+      agentId: z.string().describe("The system agent ID to unpause"),
+    },
+    async (params) => {
+      const agent = getAgent(params.agentId);
+      if (!agent) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" not found` }],
+          isError: true,
+        };
+      }
+      const encryptedKey = getAgentEncryptedKey(params.agentId);
+      if (!encryptedKey) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" has no wallet` }],
+          isError: true,
+        };
+      }
+      const result = await conduitUnpause({ agentId: params.agentId, encryptedPrivateKey: encryptedKey });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, txHash: result.txHash }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_get_all_active_agents",
+    "Get all active (non-paused) agents from the Conduit contract",
+    {},
+    async () => {
+      const agents = await conduitGetAllActiveAgents();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count: agents.length, agents }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_add_ability",
+    "Add a single ability (0-255) to an agent's abilities bitmask on the Conduit contract",
+    {
+      agentId: z.string().describe("The system agent ID"),
+      ability: z.number().int().min(0).max(255).describe("The ability index to add (0-255)"),
+    },
+    async (params) => {
+      const agent = getAgent(params.agentId);
+      if (!agent) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" not found` }],
+          isError: true,
+        };
+      }
+      const encryptedKey = getAgentEncryptedKey(params.agentId);
+      if (!encryptedKey) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" has no wallet` }],
+          isError: true,
+        };
+      }
+      const result = await conduitAddAbility({ agentId: params.agentId, encryptedPrivateKey: encryptedKey, ability: params.ability });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, ability: params.ability, txHash: result.txHash }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_remove_ability",
+    "Remove a single ability (0-255) from an agent's abilities bitmask on the Conduit contract",
+    {
+      agentId: z.string().describe("The system agent ID"),
+      ability: z.number().int().min(0).max(255).describe("The ability index to remove (0-255)"),
+    },
+    async (params) => {
+      const agent = getAgent(params.agentId);
+      if (!agent) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" not found` }],
+          isError: true,
+        };
+      }
+      const encryptedKey = getAgentEncryptedKey(params.agentId);
+      if (!encryptedKey) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" has no wallet` }],
+          isError: true,
+        };
+      }
+      const result = await conduitRemoveAbility({ agentId: params.agentId, encryptedPrivateKey: encryptedKey, ability: params.ability });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, ability: params.ability, txHash: result.txHash }, null, 2) }],
       };
     }
   );

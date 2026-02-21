@@ -35,9 +35,13 @@ const CONDUIT_ABI = [
   // Jobs — rating
   "function rateJob(uint256 id, int8 rating) external",
   // Views — explicit getters (return full structs with all fields)
-  "function getAllAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool exists)[])",
+  "function getAllAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool paused, bool exists)[])",
   "function getAgentCount() external view returns (uint256)",
-  "function getAgent(address) external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool exists))",
+  "function getAgent(address) external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool paused, bool exists))",
+  "function getAllActiveAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool paused, bool exists)[])",
+  // Pausing
+  "function pause() external",
+  "function unpause() external",
   "function getJob(uint256 id) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt))",
   "function getAllJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt)[])",
   "function getOpenJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt)[])",
@@ -52,6 +56,8 @@ const CONDUIT_ABI = [
   "event JobRefunded(uint256 indexed id)",
   "event JobRated(uint256 indexed id, int8 rating)",
   "event ReputationUpdated(address indexed agent, int256 reputation)",
+  "event AgentPaused(address indexed agent)",
+  "event AgentUnpaused(address indexed agent)",
 ];
 
 const ZEROG_RPC = process.env.ZEROG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
@@ -320,6 +326,60 @@ export async function conduitUpdateAbilities(params: {
   }
 }
 
+export async function conduitAddAbility(params: {
+  agentId: string;
+  encryptedPrivateKey: string;
+  ability: number;
+}): Promise<{ txHash: string }> {
+  if (!isConfigured) {
+    await delay(200);
+    const txHash = fakeTxHash();
+    logContractTxn(params.agentId, "addAbility", txHash, "confirmed", { ability: params.ability });
+    return { txHash };
+  }
+
+  try {
+    const signer = getAgentSigner(params.encryptedPrivateKey, ZEROG_RPC);
+    const contract = getReadContract(signer);
+    const tx = await contract.addAbility(params.ability);
+    logContractTxn(params.agentId, "addAbility", tx.hash, "pending", { ability: params.ability });
+    const receipt = await tx.wait();
+    logContractTxn(params.agentId, "addAbility", receipt?.hash ?? tx.hash, "confirmed");
+    return { txHash: receipt?.hash ?? tx.hash };
+  } catch (err: any) {
+    console.error("[conduit-contract] addAbility failed:", err);
+    logContractTxn(params.agentId, "addAbility", null, "failed", undefined, err?.message);
+    return { txHash: "0x0" };
+  }
+}
+
+export async function conduitRemoveAbility(params: {
+  agentId: string;
+  encryptedPrivateKey: string;
+  ability: number;
+}): Promise<{ txHash: string }> {
+  if (!isConfigured) {
+    await delay(200);
+    const txHash = fakeTxHash();
+    logContractTxn(params.agentId, "removeAbility", txHash, "confirmed", { ability: params.ability });
+    return { txHash };
+  }
+
+  try {
+    const signer = getAgentSigner(params.encryptedPrivateKey, ZEROG_RPC);
+    const contract = getReadContract(signer);
+    const tx = await contract.removeAbility(params.ability);
+    logContractTxn(params.agentId, "removeAbility", tx.hash, "pending", { ability: params.ability });
+    const receipt = await tx.wait();
+    logContractTxn(params.agentId, "removeAbility", receipt?.hash ?? tx.hash, "confirmed");
+    return { txHash: receipt?.hash ?? tx.hash };
+  } catch (err: any) {
+    console.error("[conduit-contract] removeAbility failed:", err);
+    logContractTxn(params.agentId, "removeAbility", null, "failed", undefined, err?.message);
+    return { txHash: "0x0" };
+  }
+}
+
 export async function conduitRentAgent(params: {
   agentId: string;
   encryptedPrivateKey: string;
@@ -511,6 +571,7 @@ export async function conduitGetAgent(address: string): Promise<OnChainAgent | n
     return {
       address,
       exists: false,
+      paused: false,
       name: "",
       chain: 0,
       pricePerMinute: "0",
@@ -525,6 +586,7 @@ export async function conduitGetAgent(address: string): Promise<OnChainAgent | n
     return {
       address: result.agent,
       exists: result.exists,
+      paused: result.paused,
       name: bytes32ToString(result.name),
       chain: Number(result.chain),
       pricePerMinute: ethers.formatEther(result.price),
@@ -540,6 +602,7 @@ export async function conduitGetAgent(address: string): Promise<OnChainAgent | n
 export interface OnChainAgent {
   address: string;
   exists: boolean;
+  paused: boolean;
   name: string;
   chain: number;
   pricePerMinute: string;
@@ -699,6 +762,12 @@ export async function conduitQueryEvents(params: {
         case "ReputationUpdated":
           filter = contract.filters.ReputationUpdated(params.agentAddress ?? null);
           break;
+        case "AgentPaused":
+          filter = contract.filters.AgentPaused(params.agentAddress ?? null);
+          break;
+        case "AgentUnpaused":
+          filter = contract.filters.AgentUnpaused(params.agentAddress ?? null);
+          break;
         default:
           filter = "*";
       }
@@ -773,6 +842,7 @@ export async function conduitGetAllAgents(): Promise<OnChainAgent[]> {
     return agents.map((a: any) => ({
       address: a.agent,
       exists: a.exists,
+      paused: a.paused,
       name: bytes32ToString(a.name),
       chain: Number(a.chain),
       pricePerMinute: ethers.formatEther(a.price),
@@ -813,6 +883,87 @@ export async function conduitGetOpenJobs(agentAddress: string): Promise<OnChainJ
     return jobs.map(parseJobTuple);
   } catch (err) {
     console.error("[conduit-contract] getOpenJobs failed:", err);
+    return [];
+  }
+}
+
+// ── Pausing ─────────────────────────────────────────────────────────────────
+
+export async function conduitPause(params: {
+  agentId: string;
+  encryptedPrivateKey: string;
+}): Promise<{ txHash: string }> {
+  if (!isConfigured) {
+    await delay(200);
+    const txHash = fakeTxHash();
+    console.log(`[conduit-stub] pause ${params.agentId} — tx=${txHash}`);
+    logContractTxn(params.agentId, "pause", txHash, "confirmed");
+    return { txHash };
+  }
+
+  try {
+    const signer = getAgentSigner(params.encryptedPrivateKey, ZEROG_RPC);
+    const contract = getReadContract(signer);
+    const tx = await contract.pause();
+    logContractTxn(params.agentId, "pause", tx.hash, "pending");
+    const receipt = await tx.wait();
+    logContractTxn(params.agentId, "pause", receipt?.hash ?? tx.hash, "confirmed");
+    return { txHash: receipt?.hash ?? tx.hash };
+  } catch (err: any) {
+    console.error("[conduit-contract] pause failed:", err);
+    logContractTxn(params.agentId, "pause", null, "failed", undefined, err?.message);
+    return { txHash: "0x0" };
+  }
+}
+
+export async function conduitUnpause(params: {
+  agentId: string;
+  encryptedPrivateKey: string;
+}): Promise<{ txHash: string }> {
+  if (!isConfigured) {
+    await delay(200);
+    const txHash = fakeTxHash();
+    console.log(`[conduit-stub] unpause ${params.agentId} — tx=${txHash}`);
+    logContractTxn(params.agentId, "unpause", txHash, "confirmed");
+    return { txHash };
+  }
+
+  try {
+    const signer = getAgentSigner(params.encryptedPrivateKey, ZEROG_RPC);
+    const contract = getReadContract(signer);
+    const tx = await contract.unpause();
+    logContractTxn(params.agentId, "unpause", tx.hash, "pending");
+    const receipt = await tx.wait();
+    logContractTxn(params.agentId, "unpause", receipt?.hash ?? tx.hash, "confirmed");
+    return { txHash: receipt?.hash ?? tx.hash };
+  } catch (err: any) {
+    console.error("[conduit-contract] unpause failed:", err);
+    logContractTxn(params.agentId, "unpause", null, "failed", undefined, err?.message);
+    return { txHash: "0x0" };
+  }
+}
+
+export async function conduitGetAllActiveAgents(): Promise<OnChainAgent[]> {
+  if (!isConfigured) {
+    console.log("[conduit-stub] getAllActiveAgents");
+    return [];
+  }
+
+  try {
+    const contract = getReadContract();
+    const agents = await contract.getAllActiveAgents();
+    return agents.map((a: any) => ({
+      address: a.agent,
+      exists: a.exists,
+      paused: a.paused,
+      name: bytes32ToString(a.name),
+      chain: Number(a.chain),
+      pricePerMinute: ethers.formatEther(a.price),
+      reputation: Number(a.reputation),
+      abilitiesMask: a.abilities.toString(),
+    }));
+  } catch (err) {
+    console.error("[conduit-contract] getAllActiveAgents failed:", err);
     return [];
   }
 }

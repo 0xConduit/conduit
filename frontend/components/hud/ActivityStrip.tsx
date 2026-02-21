@@ -8,7 +8,7 @@ export default function ActivityStrip() {
     const activityLog = useEconomyStore(useShallow(state => state.activityLog.slice(0, 5)));
 
     return (
-        <div className="fixed bottom-0 left-0 w-full h-12 border-t border-white/5 bg-[#0a0a0c]/90 backdrop-blur-md z-30 font-mono text-[11px] flex items-center px-6">
+        <div className="fixed bottom-0 left-14 right-0 h-12 border-t border-white/5 bg-[#0a0a0c]/90 backdrop-blur-md z-30 font-mono text-[11px] flex items-center px-6">
             <div className="shrink-0 flex items-center gap-2 text-white/40 tracking-widest uppercase mr-8">
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                 SYSTEM_LOG

@@ -60,6 +60,7 @@ export interface Task {
 export interface OnChainAgent {
     address: string;
     exists: boolean;
+    paused: boolean;
     name: string;
     chain: number;
     pricePerMinute: string;
@@ -108,7 +109,27 @@ interface EconomyState {
     lastActivityTimestamp: number;
     tasks: Record<string, Task>;
     actionPanelOpen: boolean;
+    chainFilter: DeployedChain | 'all';
+    registeredFilter: 'all' | 'registered' | 'unregistered';
+    pausedFilter: 'all' | 'active' | 'paused';
+    roleFilter: AgentRole | 'all';
+    statusFilter: 'idle' | 'processing' | 'dormant' | 'all';
+    attestationFilter: 'all' | 'high' | 'medium' | 'low';
+    balanceFilter: 'all' | 'high' | 'medium' | 'low' | 'zero';
+    walletFilter: 'all' | 'yes' | 'no';
+    inftFilter: 'all' | 'yes' | 'no';
+    capabilityFilter: string;
 
+    setChainFilter: (chain: DeployedChain | 'all') => void;
+    setRegisteredFilter: (filter: 'all' | 'registered' | 'unregistered') => void;
+    setPausedFilter: (filter: 'all' | 'active' | 'paused') => void;
+    setRoleFilter: (role: AgentRole | 'all') => void;
+    setStatusFilter: (status: 'idle' | 'processing' | 'dormant' | 'all') => void;
+    setAttestationFilter: (filter: 'all' | 'high' | 'medium' | 'low') => void;
+    setBalanceFilter: (filter: 'all' | 'high' | 'medium' | 'low' | 'zero') => void;
+    setWalletFilter: (filter: 'all' | 'yes' | 'no') => void;
+    setInftFilter: (filter: 'all' | 'yes' | 'no') => void;
+    setCapabilityFilter: (filter: string) => void;
     initializeNetwork: () => void;
     emitPulse: (connectionId: string, pulseType: ActivityPulse["pulseType"], value: number) => void;
     removePulse: (pulseId: string) => void;
@@ -201,6 +222,27 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
     lastActivityTimestamp: 0,
     tasks: {},
     actionPanelOpen: false,
+    chainFilter: 'all',
+    registeredFilter: 'all',
+    pausedFilter: 'all',
+    roleFilter: 'all',
+    statusFilter: 'all',
+    attestationFilter: 'all',
+    balanceFilter: 'all',
+    walletFilter: 'all',
+    inftFilter: 'all',
+    capabilityFilter: '',
+
+    setChainFilter: (chain) => set({ chainFilter: chain }),
+    setRegisteredFilter: (filter) => set({ registeredFilter: filter }),
+    setPausedFilter: (filter) => set({ pausedFilter: filter }),
+    setRoleFilter: (role) => set({ roleFilter: role }),
+    setStatusFilter: (status) => set({ statusFilter: status }),
+    setAttestationFilter: (filter) => set({ attestationFilter: filter }),
+    setBalanceFilter: (filter) => set({ balanceFilter: filter }),
+    setWalletFilter: (filter) => set({ walletFilter: filter }),
+    setInftFilter: (filter) => set({ inftFilter: filter }),
+    setCapabilityFilter: (filter) => set({ capabilityFilter: filter }),
 
     initializeNetwork: async () => {
         const [agents, connections, vitals, activity, tasks] = await Promise.all([
