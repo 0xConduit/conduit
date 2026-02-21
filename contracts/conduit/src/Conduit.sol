@@ -396,6 +396,7 @@ contract Conduit {
     }
 
     function rentAgent(address agent_, uint256 mins) public payable returns (uint256) {
+        require(mins > 0, "Invalid minutes");
         Agent storage agent = agents[agent_];
         require(agent.exists, "Agent is not registered");
         uint256 amount = agent.price * mins;
