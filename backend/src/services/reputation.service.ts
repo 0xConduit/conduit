@@ -1,6 +1,7 @@
 import { getDb } from "../db/connection.js";
 import type { Attestation } from "../shared/types.js";
 import { updateAgentAttestationScore } from "./agent.service.js";
+import { hederaAttestation } from "../chains/hedera.stub.js";
 
 function rowToAttestation(row: Record<string, unknown>): Attestation {
   return {
@@ -44,6 +45,8 @@ export function recordAttestation(params: {
     params.chainTxHash ?? null,
     now
   );
+
+  hederaAttestation.recordAttestation({ agentId: params.agentId, attesterId: params.attesterId, score: params.score, metadata: params.metadata, topicId: params.taskId! });
 
   // Recompute the agent's attestation score
   updateAgentAttestationScore(params.agentId);

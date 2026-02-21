@@ -12,6 +12,7 @@ export interface AttestationService {
     attesterId: string;
     score: number;
     metadata?: Record<string, unknown>;
+    topicId: string;
   }): Promise<{ txHash: string; topicId?: string }>;
 }
 
@@ -20,6 +21,7 @@ export interface ScheduleService {
     taskId: string;
     intervalSeconds: number;
     payload: Record<string, unknown>;
+    scheduleId: string;
   }): Promise<{ scheduleId: string }>;
 }
 

@@ -1,6 +1,7 @@
 import { getDb } from "../db/connection.js";
 import type { Escrow } from "../shared/types.js";
 import { updateAgentBalance } from "./agent.service.js";
+import { hederaEscrow } from "../chains/hedera.stub.js";
 
 function rowToEscrow(row: Record<string, unknown>): Escrow {
   return {
@@ -24,8 +25,6 @@ export function createEscrow(params: {
   payerAgentId: string;
   payeeAgentId?: string;
   amount: number;
-  chain?: string;
-  chainTxHash?: string;
 }): Escrow {
   const db = getDb();
   const id = `escrow-${generateId()}`;
@@ -34,9 +33,11 @@ export function createEscrow(params: {
   // Deduct from payer's balance
   updateAgentBalance(params.payerAgentId, -params.amount);
 
+  const txHash = hederaEscrow.lockFunds({ taskId: params.taskId, payerAgentId: params.payerAgentId, amount: params.amount });
+
   db.prepare(
     "INSERT INTO escrows (id, task_id, payer_agent_id, payee_agent_id, amount, status, chain, chain_tx_hash, created_at) VALUES (?, ?, ?, ?, ?, 'locked', ?, ?, ?)"
-  ).run(id, params.taskId, params.payerAgentId, params.payeeAgentId ?? null, params.amount, params.chain ?? null, params.chainTxHash ?? null, now);
+  ).run(id, params.taskId, params.payerAgentId, params.payeeAgentId ?? null, params.amount, "hedera", txHash.toString(), now);
 
   return getEscrow(id)!;
 }
@@ -65,6 +66,8 @@ export function releaseEscrow(escrowId: string): Escrow | null {
     updateAgentBalance(escrow.payeeAgentId, escrow.amount);
   }
 
+  hederaEscrow.releaseFunds({ escrowId: escrowId, payeeAgentId: escrow.payeeAgentId!, amount: escrow.amount });
+
   db.prepare("UPDATE escrows SET status = 'released', settled_at = ? WHERE id = ?").run(now, escrowId);
   return getEscrow(escrowId);
 }
@@ -80,6 +83,7 @@ export function refundEscrow(escrowId: string): Escrow | null {
   updateAgentBalance(escrow.payerAgentId, escrow.amount);
 
   db.prepare("UPDATE escrows SET status = 'refunded', settled_at = ? WHERE id = ?").run(now, escrowId);
+  hederaEscrow.refundFunds({ escrowId: escrowId, payerAgentId: escrow.payerAgentId, amount: escrow.amount });
   return getEscrow(escrowId);
 }
 

@@ -16,7 +16,7 @@ const edgeTypes = {
     routing: TopologyEdge,
 };
 
-// Structural layout for infrastructural components
+// Structural layout for infrastructural components (stable positions)
 const initialLayout: Record<string, { x: number; y: number }> = {
     'node-alpha': { x: 0, y: 0 },
     'worker-v7': { x: 300, y: -150 },
@@ -24,6 +24,39 @@ const initialLayout: Record<string, { x: number; y: number }> = {
     'settlement-layer': { x: 0, y: 300 },
     'worker-v2': { x: 400, y: 50 },
 };
+
+const NODE_MIN_DISTANCE = 220; // node ~160px wide; keep center-to-center gap
+
+// Deterministic list of candidate positions (rings) so new agents get non-overlapping spots
+function getCandidatePositions(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    const radii = [280, 420, 560, 700];
+    const steps = [8, 12, 16, 20];
+    radii.forEach((r, i) => {
+        const n = steps[i];
+        for (let k = 0; k < n; k++) {
+            const angle = (2 * Math.PI * k) / n;
+            out.push({ x: Math.round(r * Math.cos(angle)), y: Math.round(r * Math.sin(angle)) });
+        }
+    });
+    return out;
+}
+
+const CANDIDATES = getCandidatePositions();
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function findNonOverlappingPosition(occupied: { x: number; y: number }[]): { x: number; y: number } {
+    for (const pos of CANDIDATES) {
+        if (occupied.every(o => distance(o, pos) >= NODE_MIN_DISTANCE))
+            return pos;
+    }
+    // fallback: offset from last occupied or (500, 500)
+    const last = occupied[occupied.length - 1] ?? { x: 500, y: 500 };
+    return { x: last.x + NODE_MIN_DISTANCE, y: last.y };
+}
 
 export default function LivingCanvas() {
     const agents = useEconomyStore(state => state.agents);
@@ -56,12 +89,24 @@ export default function LivingCanvas() {
     }, [networkTick]);
 
     const nodes: Node[] = useMemo(() => {
-        return (Object.values(agents) as AgentEntity[]).map(agent => ({
-            id: agent.id,
-            type: 'infrastructure',
-            position: initialLayout[agent.id] || { x: Math.random() * 500, y: Math.random() * 500 },
-            data: { ...agent } as Record<string, unknown>,
-        }));
+        const list = (Object.values(agents) as AgentEntity[]).sort((a, b) => a.id.localeCompare(b.id));
+        const occupied: { x: number; y: number }[] = Object.values(initialLayout);
+        const positions: Record<string, { x: number; y: number }> = { ...initialLayout };
+
+        return list.map(agent => {
+            let position = positions[agent.id];
+            if (position === undefined) {
+                position = findNonOverlappingPosition(occupied);
+                positions[agent.id] = position;
+                occupied.push(position);
+            }
+            return {
+                id: agent.id,
+                type: 'infrastructure',
+                position,
+                data: { ...agent } as Record<string, unknown>,
+            };
+        });
     }, [agents]);
 
     const edges: Edge[] = useMemo(() => {
@@ -81,6 +126,10 @@ export default function LivingCanvas() {
         }
     }, [setSelectedAgent]);
 
+    const onInit = useCallback((reactFlowInstance: { fitView: (opts?: { padding?: number; duration?: number }) => void }) => {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 200 });
+    }, []);
+
     if (Object.keys(agents).length === 0) return null;
 
     return (
@@ -89,9 +138,10 @@ export default function LivingCanvas() {
                 nodes={nodes}
                 edges={edges}
                 onSelectionChange={handleSelectionChange}
+                onInit={onInit}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
-                fitView
+                fitView={false}
                 className="bg-[#0a0a0c]"
                 nodesDraggable={true}
                 nodesConnectable={false}

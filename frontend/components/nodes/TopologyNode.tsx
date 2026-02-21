@@ -14,7 +14,7 @@ export const TopologyNode = memo(({ data, selected }: { data: any, selected: boo
 
     return (
         <div className={`
-            relative flex flex-col items-start min-w-[160px] cursor-pointer 
+            relative flex flex-col items-start min-w-[160px] w-[160px] min-h-[88px] cursor-pointer 
             bg-[#0F1115] border transition-colors duration-200
             ${selected ? 'border-white/40 shadow-lg shadow-white/5' : 'border-white/10 hover:border-white/20'}
         `}>
