@@ -3,7 +3,7 @@ import "./globals.css";
 import Providers from "../components/Providers";
 
 export const metadata: Metadata = {
-  title: "Living Economy",
+  title: "Conduit",
   description: "Agent economy visualization",
 };
 

@@ -9,6 +9,9 @@ import {
   conduitGetContractBalance,
   conduitQueryEvents,
   conduitGetJobsForAgent,
+  conduitGetAllAgents,
+  conduitGetAgentCount,
+  conduitGetOpenJobs,
 } from "../../chains/conduit.service.js";
 
 export function registerContractTools(server: McpServer) {
@@ -138,6 +141,58 @@ export function registerContractTools(server: McpServer) {
       const jobs = await conduitGetJobsForAgent(walletAddress);
       return {
         content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, walletAddress, jobs }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_get_all_agents",
+    "Get all registered agents from the Conduit contract with their on-chain profiles (address, name, chain, price, reputation, abilities)",
+    {},
+    async () => {
+      const agents = await conduitGetAllAgents();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count: agents.length, agents }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_get_agent_count",
+    "Get the total number of registered agents on the Conduit contract",
+    {},
+    async () => {
+      const count = await conduitGetAgentCount();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count }, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
+    "contract_get_open_jobs",
+    "Get all open/pending jobs for an agent (not yet accepted, rejected, or completed)",
+    {
+      agentId: z.string().describe("The system agent ID to look up open jobs for"),
+    },
+    async (params) => {
+      const agent = getAgent(params.agentId);
+      if (!agent) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" not found` }],
+          isError: true,
+        };
+      }
+      const walletAddress = getAgentWalletAddress(params.agentId);
+      if (!walletAddress) {
+        return {
+          content: [{ type: "text", text: `Agent "${params.agentId}" has no wallet address` }],
+          isError: true,
+        };
+      }
+      const jobs = await conduitGetOpenJobs(walletAddress);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ agentId: params.agentId, walletAddress, openJobs: jobs }, null, 2) }],
       };
     }
   );

@@ -23,6 +23,9 @@ import {
   conduitGetContractBalance,
   conduitQueryEvents,
   conduitGetJobsForAgent,
+  conduitGetAllAgents,
+  conduitGetAgentCount,
+  conduitGetOpenJobs,
 } from "../chains/conduit.service.js";
 import { getDb } from "../db/connection.js";
 import type { DeployedChain, AgentRole } from "../shared/types.js";
@@ -485,5 +488,27 @@ export const handlers: Record<string, Handler> = {
 
     const balance = await conduitGetBalance(agent.walletAddress);
     return json({ walletAddress: agent.walletAddress, balance });
+  },
+
+  // Get open/pending jobs for an agent
+  "GET /api/agents/:id/contract/open-jobs": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+    if (!agent.walletAddress) return json({ error: "Agent has no wallet" }, 400);
+
+    const jobs = await conduitGetOpenJobs(agent.walletAddress);
+    return json({ jobs });
+  },
+
+  // Get all on-chain registered agents
+  "GET /api/contract/agents": async () => {
+    const agents = await conduitGetAllAgents();
+    return json({ agents, count: agents.length });
+  },
+
+  // Get on-chain agent count
+  "GET /api/contract/agents/count": async () => {
+    const count = await conduitGetAgentCount();
+    return json({ count });
   },
 };

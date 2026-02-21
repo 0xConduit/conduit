@@ -32,18 +32,22 @@ const CONDUIT_ABI = [
   "function rejectJob(uint256 id) external",
   "function completeJob(uint256 id, bytes32 attestation) external",
   "function refundJob(uint256 id) external",
-  // Views (auto-generated getters for public mappings)
-  "function agents(address) external view returns (bytes32 name, uint256 price, uint256 reputation, uint256 abilities, uint8 chain, bool exists)",
-  "function jobs(uint256) external view returns (address agent, address renter, uint256 amount, bytes32 attestation, bool accepted, bool rejected, bool completed, string prompt)",
+  // Views — explicit getters (return full structs with all fields)
+  "function getAllAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, uint256 reputation, uint256 abilities, uint8 chain, bool exists)[])",
+  "function getAgentCount() external view returns (uint256)",
+  "function getAgent(address) external view returns (tuple(address agent, bytes32 name, uint256 price, uint256 reputation, uint256 abilities, uint8 chain, bool exists))",
+  "function getJob(uint256 id) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt))",
+  "function getAllJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt)[])",
+  "function getOpenJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt)[])",
   // Events
   "event AgentRegistered(address indexed agent, bytes32 name, uint8 chain, uint256 price, uint256 abilities)",
   "event AgentUpdated(address indexed agent, bytes32 name, uint8 chain, uint256 price, uint256 abilities)",
   "event AgentDeregistered(address indexed agent)",
-  "event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount)",
-  "event JobAccepted(uint256 indexed id)",
+  "event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount, uint256 expiry)",
+  "event JobAccepted(uint256 indexed id, uint256 expiry)",
   "event JobRejected(uint256 indexed id)",
-  "event JobCompleted(uint256 indexed id)",
-  "event JobRefunded(uint256 indexed id, bytes32 attestation)",
+  "event JobCompleted(uint256 indexed id, bytes32 attestation)",
+  "event JobRefunded(uint256 indexed id)",
 ];
 
 const ZEROG_RPC = process.env.ZEROG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
@@ -470,16 +474,10 @@ export async function conduitRefundJob(params: {
 
 // ── Read Functions ───────────────────────────────────────────────────────────────
 
-export async function conduitGetAgent(address: string): Promise<{
-  exists: boolean;
-  name: string;
-  chain: number;
-  pricePerMinute: string;
-  reputation: number;
-  abilitiesMask: string;
-} | null> {
+export async function conduitGetAgent(address: string): Promise<OnChainAgent | null> {
   if (!isConfigured) {
     return {
+      address,
       exists: false,
       name: "",
       chain: 0,
@@ -491,15 +489,15 @@ export async function conduitGetAgent(address: string): Promise<{
 
   try {
     const contract = getReadContract();
-    const result = await contract.agents(address);
-    // Solidity struct order: name, price, reputation, abilities, chain, exists
+    const result = await contract.getAgent(address);
     return {
-      exists: result[5],
-      name: bytes32ToString(result[0]),
-      chain: Number(result[4]),
-      pricePerMinute: ethers.formatEther(result[1]),
-      reputation: Number(result[2]),
-      abilitiesMask: result[3].toString(),
+      address: result.agent,
+      exists: result.exists,
+      name: bytes32ToString(result.name),
+      chain: Number(result.chain),
+      pricePerMinute: ethers.formatEther(result.price),
+      reputation: Number(result.reputation),
+      abilitiesMask: result.abilities.toString(),
     };
   } catch (err) {
     console.error("[conduit-contract] getAgent failed:", err);
@@ -507,16 +505,44 @@ export async function conduitGetAgent(address: string): Promise<{
   }
 }
 
+export interface OnChainAgent {
+  address: string;
+  exists: boolean;
+  name: string;
+  chain: number;
+  pricePerMinute: string;
+  reputation: number;
+  abilitiesMask: string;
+}
+
 export interface OnChainJob {
   jobId: number;
   agent: string;
   renter: string;
+  mins: number;
   amount: string;
   attestation: string;
+  expiry: number;
   accepted: boolean;
   rejected: boolean;
   completed: boolean;
   prompt: string;
+}
+
+function parseJobTuple(j: any): OnChainJob {
+  return {
+    jobId: Number(j.id),
+    agent: j.agent,
+    renter: j.renter,
+    mins: Number(j.mins),
+    amount: ethers.formatEther(j.amount),
+    attestation: bytes32ToString(j.attestation),
+    expiry: Number(j.expiry),
+    accepted: j.accepted,
+    rejected: j.rejected,
+    completed: j.completed,
+    prompt: j.prompt,
+  };
 }
 
 export async function conduitGetJob(jobId: number): Promise<OnChainJob | null> {
@@ -527,22 +553,9 @@ export async function conduitGetJob(jobId: number): Promise<OnChainJob | null> {
 
   try {
     const contract = getReadContract();
-    const result = await contract.jobs(jobId);
-    // jobs() returns: agent, renter, amount, attestation, accepted, rejected, completed, prompt
-    const agent = result[0] as string;
-    // Zero address means no job at this ID
-    if (agent === ethers.ZeroAddress) return null;
-    return {
-      jobId,
-      agent,
-      renter: result[1] as string,
-      amount: ethers.formatEther(result[2]),
-      attestation: bytes32ToString(result[3]),
-      accepted: result[4] as boolean,
-      rejected: result[5] as boolean,
-      completed: result[6] as boolean,
-      prompt: result[7] as string,
-    };
+    const result = await contract.getJob(jobId);
+    if (result.agent === ethers.ZeroAddress) return null;
+    return parseJobTuple(result);
   } catch (err) {
     console.error("[conduit-contract] getJob failed:", err);
     return null;
@@ -698,27 +711,66 @@ export async function conduitGetJobsForAgent(agentAddress: string): Promise<OnCh
 
   try {
     const contract = getReadContract();
-    // Query JobCreated events where agent (2nd indexed param) matches
-    const filter = contract.filters.JobCreated(null, agentAddress, null);
-    const events = await contract.queryFilter(filter, 0, "latest");
-
-    const jobs: OnChainJob[] = [];
-    for (const ev of events) {
-      let jobId: number;
-      if (ev instanceof ethers.EventLog && ev.args) {
-        jobId = Number(ev.args[0]);
-      } else {
-        const iface = new ethers.Interface(CONDUIT_ABI);
-        const parsed = iface.parseLog({ topics: ev.topics as string[], data: ev.data });
-        if (!parsed) continue;
-        jobId = Number(parsed.args[0]);
-      }
-      const job = await conduitGetJob(jobId);
-      if (job) jobs.push(job);
-    }
-    return jobs;
+    const jobs = await contract.getAllJobs(agentAddress);
+    return jobs.map(parseJobTuple);
   } catch (err) {
     console.error("[conduit-contract] getJobsForAgent failed:", err);
+    return [];
+  }
+}
+
+export async function conduitGetAllAgents(): Promise<OnChainAgent[]> {
+  if (!isConfigured) {
+    console.log("[conduit-stub] getAllAgents");
+    return [];
+  }
+
+  try {
+    const contract = getReadContract();
+    const agents = await contract.getAllAgents();
+    return agents.map((a: any) => ({
+      address: a.agent,
+      exists: a.exists,
+      name: bytes32ToString(a.name),
+      chain: Number(a.chain),
+      pricePerMinute: ethers.formatEther(a.price),
+      reputation: Number(a.reputation),
+      abilitiesMask: a.abilities.toString(),
+    }));
+  } catch (err) {
+    console.error("[conduit-contract] getAllAgents failed:", err);
+    return [];
+  }
+}
+
+export async function conduitGetAgentCount(): Promise<number> {
+  if (!isConfigured) {
+    console.log("[conduit-stub] getAgentCount");
+    return 0;
+  }
+
+  try {
+    const contract = getReadContract();
+    const count = await contract.getAgentCount();
+    return Number(count);
+  } catch (err) {
+    console.error("[conduit-contract] getAgentCount failed:", err);
+    return 0;
+  }
+}
+
+export async function conduitGetOpenJobs(agentAddress: string): Promise<OnChainJob[]> {
+  if (!isConfigured) {
+    console.log(`[conduit-stub] getOpenJobs(${agentAddress})`);
+    return [];
+  }
+
+  try {
+    const contract = getReadContract();
+    const jobs = await contract.getOpenJobs(agentAddress);
+    return jobs.map(parseJobTuple);
+  } catch (err) {
+    console.error("[conduit-contract] getOpenJobs failed:", err);
     return [];
   }
 }

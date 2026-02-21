@@ -57,12 +57,24 @@ export interface Task {
     chainTxHash?: string;
 }
 
+export interface OnChainAgent {
+    address: string;
+    exists: boolean;
+    name: string;
+    chain: number;
+    pricePerMinute: string;
+    reputation: number;
+    abilitiesMask: string;
+}
+
 export interface OnChainJob {
     jobId: number;
     agent: string;
     renter: string;
+    mins: number;
     amount: string;
     attestation: string;
+    expiry: number;
     accepted: boolean;
     rejected: boolean;
     completed: boolean;
@@ -127,6 +139,9 @@ interface EconomyState {
     contractGetContractBalance: () => Promise<{ balance: string } | null>;
     contractQueryEvents: (params?: { type?: string; agent?: string; jobId?: number; fromBlock?: number; limit?: number }) => Promise<ContractEvent[]>;
     contractGetAgentJobs: (agentId: string) => Promise<OnChainJob[]>;
+    contractGetAllAgents: () => Promise<OnChainAgent[]>;
+    contractGetAgentCount: () => Promise<number>;
+    contractGetOpenJobs: (agentId: string) => Promise<OnChainJob[]>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -343,6 +358,21 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
 
     contractGetAgentJobs: async (agentId) => {
         const result = await fetchJson<{ jobs: OnChainJob[] }>(`/api/agents/${agentId}/contract/jobs`);
+        return result?.jobs ?? [];
+    },
+
+    contractGetAllAgents: async () => {
+        const result = await fetchJson<{ agents: OnChainAgent[]; count: number }>('/api/contract/agents');
+        return result?.agents ?? [];
+    },
+
+    contractGetAgentCount: async () => {
+        const result = await fetchJson<{ count: number }>('/api/contract/agents/count');
+        return result?.count ?? 0;
+    },
+
+    contractGetOpenJobs: async (agentId) => {
+        const result = await fetchJson<{ jobs: OnChainJob[] }>(`/api/agents/${agentId}/contract/open-jobs`);
         return result?.jobs ?? [];
     },
 

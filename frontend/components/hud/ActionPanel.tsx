@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEconomyStore, type DeployedChain, type AgentRole, type Task, type AgentEntity, type OnChainJob, type ContractEvent } from '../../store/useEconomyStore';
+import { useEconomyStore, type DeployedChain, type AgentRole, type Task, type AgentEntity, type OnChainJob, type OnChainAgent, type ContractEvent } from '../../store/useEconomyStore';
 
 // ── Chain metadata ─────────────────────────────────────────────────────────────
 const CHAINS: { value: DeployedChain; label: string; description: string; color: string; dot: string }[] = [
@@ -814,6 +814,8 @@ function ContractJobsSub({ agentId, onTx }: { agentId: string; onTx: (hash: stri
 }
 
 // ── Contract > Read sub-tab ────────────────────────────────────────────────────
+const CHAIN_NAMES: Record<number, string> = { 0: 'Base', 1: 'Hedera', 2: 'KiteAI', 3: '0G' };
+
 function ContractReadSub({ agentId }: { agentId: string }) {
     const store = useEconomyStore();
     const agent = store.agents[agentId];
@@ -830,6 +832,14 @@ function ContractReadSub({ agentId }: { agentId: string }) {
     const [agentJobs, setAgentJobs] = useState<OnChainJob[]>([]);
     const [jobsLoading, setJobsLoading] = useState(false);
 
+    // Open jobs for agent
+    const [openJobs, setOpenJobs] = useState<OnChainJob[]>([]);
+    const [openJobsLoading, setOpenJobsLoading] = useState(false);
+
+    // All registered agents
+    const [allAgents, setAllAgents] = useState<OnChainAgent[]>([]);
+    const [allAgentsLoading, setAllAgentsLoading] = useState(false);
+
     // Job lookup by ID
     const [lookupJobId, setLookupJobId] = useState('');
     const [lookupJob, setLookupJob] = useState<OnChainJob | null>(null);
@@ -843,8 +853,9 @@ function ContractReadSub({ agentId }: { agentId: string }) {
     const [events, setEvents] = useState<ContractEvent[]>([]);
     const [eventsLoading, setEventsLoading] = useState(false);
 
-    // Job count
+    // Counts
     const [jobCount, setJobCount] = useState<number | null>(null);
+    const [agentCount, setAgentCount] = useState<number | null>(null);
 
     async function loadProfile() {
         setProfileLoading(true);
@@ -866,6 +877,20 @@ function ContractReadSub({ agentId }: { agentId: string }) {
         const jobs = await store.contractGetAgentJobs(agentId);
         setAgentJobs(jobs);
         setJobsLoading(false);
+    }
+
+    async function loadOpenJobs() {
+        setOpenJobsLoading(true);
+        const jobs = await store.contractGetOpenJobs(agentId);
+        setOpenJobs(jobs);
+        setOpenJobsLoading(false);
+    }
+
+    async function loadAllAgents() {
+        setAllAgentsLoading(true);
+        const agents = await store.contractGetAllAgents();
+        setAllAgents(agents);
+        setAllAgentsLoading(false);
     }
 
     async function handleLookupJob(e: React.FormEvent) {
@@ -895,6 +920,21 @@ function ContractReadSub({ agentId }: { agentId: string }) {
     async function loadJobCount() {
         const data = await store.contractGetJobCount();
         setJobCount(data.count);
+    }
+
+    async function loadAgentCount() {
+        const count = await store.contractGetAgentCount();
+        setAgentCount(count);
+    }
+
+    function formatExpiry(expiry: number): string {
+        if (!expiry) return '—';
+        const now = Math.floor(Date.now() / 1000);
+        const diff = expiry - now;
+        if (diff <= 0) return 'expired';
+        if (diff < 60) return `${diff}s left`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
+        return `${Math.floor(diff / 3600)}h left`;
     }
 
     return (
@@ -936,10 +976,42 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                 )}
             </div>
 
-            {/* Agent On-Chain Jobs */}
+            {/* Open Jobs (pending — need action) */}
             <div className={sectionCls}>
                 <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Agent Jobs</p>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Open Jobs</p>
+                    <button onClick={loadOpenJobs} disabled={openJobsLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {openJobsLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                {openJobs.length > 0 ? (
+                    <div className="space-y-1">
+                        {openJobs.map(j => (
+                            <div key={j.jobId} className="border border-yellow-400/20 rounded px-2 py-1.5 bg-yellow-400/5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] text-white/50 font-mono">Job #{j.jobId}</span>
+                                    <span className="text-[9px] px-1 py-0.5 rounded border font-semibold text-yellow-400 border-yellow-400/30">
+                                        awaiting
+                                    </span>
+                                </div>
+                                <div className="flex justify-between text-[9px] mt-0.5">
+                                    <span className="text-white/30">{j.amount} ETH · {j.mins}min</span>
+                                    <span className="text-white/25">{formatExpiry(j.expiry)}</span>
+                                </div>
+                                <div className="text-[9px] text-white/20 font-mono truncate mt-0.5">renter: {truncateAddr(j.renter)}</div>
+                                {j.prompt && <div className="text-[9px] text-white/20 truncate">{j.prompt}</div>}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[9px] text-white/20">Click refresh to load</p>
+                )}
+            </div>
+
+            {/* Agent On-Chain Jobs (all) */}
+            <div className={sectionCls}>
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">All Agent Jobs</p>
                     <button onClick={loadAgentJobs} disabled={jobsLoading} className="text-[9px] text-white/40 hover:text-white/70">
                         {jobsLoading ? 'loading...' : 'refresh'}
                     </button>
@@ -959,7 +1031,10 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                                         {j.completed ? 'completed' : j.rejected ? 'rejected' : j.accepted ? 'accepted' : 'pending'}
                                     </span>
                                 </div>
-                                <div className="text-[9px] text-white/30 font-mono truncate mt-0.5">{j.amount} ETH</div>
+                                <div className="flex justify-between text-[9px] mt-0.5">
+                                    <span className="text-white/30">{j.amount} ETH · {j.mins}min</span>
+                                    <span className="text-white/25">{formatExpiry(j.expiry)}</span>
+                                </div>
                                 {j.prompt && <div className="text-[9px] text-white/20 truncate">{j.prompt}</div>}
                             </div>
                         ))}
@@ -986,6 +1061,8 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">agent</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{truncateAddr(lookupJob.agent)}</span></div>
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">renter</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{truncateAddr(lookupJob.renter)}</span></div>
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">amount</span><span className="text-white/60 font-mono">{lookupJob.amount} ETH</span></div>
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">duration</span><span className="text-white/60 font-mono">{lookupJob.mins} min</span></div>
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">expiry</span><span className="text-white/60 font-mono">{formatExpiry(lookupJob.expiry)}</span></div>
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">status</span><span className="text-white/60">{lookupJob.completed ? 'completed' : lookupJob.rejected ? 'rejected' : lookupJob.accepted ? 'accepted' : 'pending'}</span></div>
                         {lookupJob.prompt && <div className="flex justify-between text-[9px]"><span className="text-white/30">prompt</span><span className="text-white/60 truncate ml-2 max-w-[60%] text-right">{lookupJob.prompt}</span></div>}
                         {lookupJob.attestation && lookupJob.attestation !== '\x00' && <div className="flex justify-between text-[9px]"><span className="text-white/30">attestation</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{lookupJob.attestation}</span></div>}
@@ -993,11 +1070,40 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                 )}
             </div>
 
-            {/* Contract Balance + Job Count */}
+            {/* All Registered Agents */}
+            <div className={sectionCls}>
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Registered Agents</p>
+                    <button onClick={loadAllAgents} disabled={allAgentsLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {allAgentsLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                {allAgents.length > 0 ? (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {allAgents.map(a => (
+                            <div key={a.address} className="border border-white/10 rounded px-2 py-1.5 bg-white/[0.02]">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] text-white/60 font-semibold truncate">{a.name || '(unnamed)'}</span>
+                                    <span className="text-[8px] text-white/30">{CHAIN_NAMES[a.chain] ?? `Chain ${a.chain}`}</span>
+                                </div>
+                                <div className="text-[8px] text-white/25 font-mono truncate mt-0.5">{a.address}</div>
+                                <div className="flex justify-between text-[8px] mt-0.5">
+                                    <span className="text-white/25">{a.pricePerMinute} ETH/min</span>
+                                    <span className="text-white/25">rep: {a.reputation}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[9px] text-white/20">Click refresh to load</p>
+                )}
+            </div>
+
+            {/* Contract Stats */}
             <div className={sectionCls}>
                 <div className="flex items-center justify-between">
                     <p className="text-[10px] text-white/40 uppercase tracking-widest">Contract Stats</p>
-                    <button onClick={() => { loadContractBalance(); loadJobCount(); }} disabled={contractBalLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                    <button onClick={() => { loadContractBalance(); loadJobCount(); loadAgentCount(); }} disabled={contractBalLoading} className="text-[9px] text-white/40 hover:text-white/70">
                         {contractBalLoading ? 'loading...' : 'refresh'}
                     </button>
                 </div>
@@ -1005,6 +1111,10 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                     <div className="flex justify-between text-[9px]">
                         <span className="text-white/30">Escrowed ETH</span>
                         <span className="text-emerald-400 font-mono">{contractBalance ?? '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-[9px]">
+                        <span className="text-white/30">Registered Agents</span>
+                        <span className="text-white/60 font-mono">{agentCount ?? '—'}</span>
                     </div>
                     <div className="flex justify-between text-[9px]">
                         <span className="text-white/30">Total Jobs</span>
