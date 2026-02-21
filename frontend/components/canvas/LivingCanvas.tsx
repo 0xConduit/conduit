@@ -1,38 +1,83 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ReactFlow, Background, OnSelectionChangeParams, Node, Edge } from '@xyflow/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactFlow, Background, OnSelectionChangeParams, Node, Edge, NodeChange, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useEconomyStore, AgentEntity, NetworkConnection } from '../../store/useEconomyStore';
 import TopologyNode from '../nodes/TopologyNode';
 import TopologyEdge from '../edges/TopologyEdge';
 
-const nodeTypes = {
-    infrastructure: TopologyNode,
+const nodeTypes = { infrastructure: TopologyNode };
+const edgeTypes = { routing: TopologyEdge };
+
+const SEED_LAYOUT: Record<string, { x: number; y: number }> = {
+    'node-alpha':       { x: 0,    y: 0 },
+    'worker-v7':        { x: 300,  y: -150 },
+    'data-ingest':      { x: -300, y: -150 },
+    'settlement-layer': { x: 0,    y: 300 },
+    'worker-v2':        { x: 400,  y: 50 },
 };
 
-const edgeTypes = {
-    routing: TopologyEdge,
-};
-
-// Structural layout for infrastructural components
-const initialLayout: Record<string, { x: number; y: number }> = {
-    'node-alpha': { x: 0, y: 0 },
-    'worker-v7': { x: 300, y: -150 },
-    'data-ingest': { x: -300, y: -150 },
-    'settlement-layer': { x: 0, y: 300 },
-    'worker-v2': { x: 400, y: 50 },
-};
+const DYNAMIC_SLOTS: { x: number; y: number }[] = [
+    { x: -450, y: 150 },  { x: 500,  y: 250 },
+    { x: -200, y: -350 }, { x: 250,  y: 400 },
+    { x: -500, y: -50 },  { x: 550,  y: -200 },
+    { x: -350, y: 350 },  { x: 150,  y: -350 },
+    { x: -100, y: 450 },  { x: 600,  y: 100 },
+    { x: -550, y: -250 }, { x: 350,  y: -300 },
+];
 
 export default function LivingCanvas() {
-    const agents = useEconomyStore(state => state.agents);
+    const agents      = useEconomyStore(state => state.agents);
     const connections = useEconomyStore(state => state.connections);
     const initializeNetwork = useEconomyStore(state => state.initializeNetwork);
-    const networkTick = useEconomyStore(state => state.networkTick);
-    const setSelectedAgent = useEconomyStore(state => state.setSelectedAgent);
-    const initialized = useRef(false);
+    const networkTick       = useEconomyStore(state => state.networkTick);
+    const setSelectedAgent  = useEconomyStore(state => state.setSelectedAgent);
+
+    const initialized        = useRef(false);
     const selectedAgentIdRef = useRef<string | null>(useEconomyStore.getState().selectedAgentId);
+    const positionCache      = useRef<Record<string, { x: number; y: number }>>({});
+    const dynamicSlotIndex   = useRef(0);
+
+    function getPosition(id: string): { x: number; y: number } {
+        if (positionCache.current[id]) return positionCache.current[id];
+        const pos = SEED_LAYOUT[id] ?? DYNAMIC_SLOTS[dynamicSlotIndex.current++ % DYNAMIC_SLOTS.length];
+        positionCache.current[id] = pos;
+        return pos;
+    }
+
+    const [rfNodes, setRfNodes] = useState<Node[]>([]);
+
+    useEffect(() => {
+        const agentList = Object.values(agents) as AgentEntity[];
+        setRfNodes(prev => {
+            const prevById: Record<string, Node> = {};
+            for (const n of prev) prevById[n.id] = n;
+            return agentList.map(agent => {
+                const existing = prevById[agent.id];
+                return {
+                    id:       agent.id,
+                    type:     'infrastructure',
+                    position: existing ? existing.position : getPosition(agent.id),
+                    data:     { ...agent } as Record<string, unknown>,
+                };
+            });
+        });
+    }, [agents]);
+
+    const onNodesChange = useCallback((changes: NodeChange[]) => {
+        setRfNodes(nds => applyNodeChanges(changes, nds));
+    }, []);
+
+    const edges: Edge[] = useMemo(() => {
+        return (Object.values(connections) as NetworkConnection[]).map(conn => ({
+            id:     conn.id,
+            source: conn.sourceAgentId,
+            target: conn.targetAgentId,
+            type:   'routing',
+        }));
+    }, [connections]);
 
     useEffect(() => {
         if (initialized.current) return;
@@ -48,50 +93,38 @@ export default function LivingCanvas() {
     }, []);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            networkTick();
-        }, 500);
-
+        const interval = setInterval(() => networkTick(), 500);
         return () => clearInterval(interval);
     }, [networkTick]);
 
-    const nodes: Node[] = useMemo(() => {
-        return (Object.values(agents) as AgentEntity[]).map(agent => ({
-            id: agent.id,
-            type: 'infrastructure',
-            position: initialLayout[agent.id] || { x: Math.random() * 500, y: Math.random() * 500 },
-            data: { ...agent } as Record<string, unknown>,
-        }));
-    }, [agents]);
-
-    const edges: Edge[] = useMemo(() => {
-        return (Object.values(connections) as NetworkConnection[]).map(conn => ({
-            id: conn.id,
-            source: conn.sourceAgentId,
-            target: conn.targetAgentId,
-            type: 'routing',
-            animated: true, // Subtle standard dashed animation fallback
-        }));
-    }, [connections]);
-
     const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
         const newId = params.nodes.length > 0 ? params.nodes[0].id : null;
-        if (newId !== selectedAgentIdRef.current) {
-            setSelectedAgent(newId);
-        }
+        if (newId !== selectedAgentIdRef.current) setSelectedAgent(newId);
     }, [setSelectedAgent]);
 
-    if (Object.keys(agents).length === 0) return null;
+    const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+        setSelectedAgent(node.id);
+    }, [setSelectedAgent]);
+
+    const handlePaneClick = useCallback(() => {
+        setSelectedAgent(null);
+    }, [setSelectedAgent]);
+
+    if (rfNodes.length === 0) return null;
 
     return (
         <div className="absolute inset-0 w-full h-full bg-[#0a0a0c] -z-10 font-mono">
             <ReactFlow
-                nodes={nodes}
+                nodes={rfNodes}
                 edges={edges}
+                onNodesChange={onNodesChange}
                 onSelectionChange={handleSelectionChange}
+                onNodeClick={handleNodeClick}
+                onPaneClick={handlePaneClick}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 fitView
+                fitViewOptions={{ padding: 0.2 }}
                 className="bg-[#0a0a0c]"
                 nodesDraggable={true}
                 nodesConnectable={false}
