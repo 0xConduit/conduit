@@ -14,7 +14,7 @@ import LandingFooter from '../landing/LandingFooter';
 
 export default function LandingOverlay() {
     const setViewMode = useEconomyStore(state => state.setViewMode);
-    const { login, authenticated, loginError, clearLoginError, user } = useAuth();
+    const { login, logout, authenticated, loginError, clearLoginError, user } = useAuth();
     const router = useRouter();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const { scrollY } = useScroll({ container: scrollContainerRef });
@@ -80,7 +80,7 @@ export default function LandingOverlay() {
                     authenticated={authenticated}
                     walletAddress={user?.wallet?.address}
                     onDashboard={() => router.push('/dashboard')}
-                    onObserve={() => setViewMode('explore')}
+                    onDisconnect={() => logout()}
                 />
 
                 <div className="min-h-screen relative flex flex-col pointer-events-none">

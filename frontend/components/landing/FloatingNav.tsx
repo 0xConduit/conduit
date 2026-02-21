@@ -1,5 +1,6 @@
-import { motion } from 'framer-motion';
-import { ArrowRight, Github, Wallet } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, Github, Wallet, LogOut } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 
 interface FloatingNavProps {
     isScrolled: boolean;
@@ -7,10 +8,24 @@ interface FloatingNavProps {
     authenticated: boolean;
     walletAddress?: string | null;
     onDashboard: () => void;
-    onObserve: () => void;
+    onDisconnect: () => void;
 }
 
-export default function FloatingNav({ isScrolled, prefersReducedMotion, authenticated, walletAddress, onDashboard, onObserve }: FloatingNavProps) {
+export default function FloatingNav({ isScrolled, prefersReducedMotion, authenticated, walletAddress, onDashboard, onDisconnect }: FloatingNavProps) {
+    const [showDropdown, setShowDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setShowDropdown(false);
+            }
+        }
+        if (showDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showDropdown]);
     return (
         <motion.nav
             className="fixed top-0 z-50 left-0 right-0 mx-auto h-[72px] border"
@@ -54,15 +69,42 @@ export default function FloatingNav({ isScrolled, prefersReducedMotion, authenti
 
                 <div className="flex-1 flex items-center justify-end gap-4">
                     <a href="https://github.com" target="_blank" rel="noreferrer" className="text-white/50 hover:text-white transition-colors">
-                        <Github className="w-4 h-4" />
+                        <Github className="w-5 h-5" />
                     </a>
-                    {authenticated ? (<>
+                    <a href="https://x.com/0xconduit" target="_blank" rel="noreferrer" className="text-white/50 hover:text-white transition-colors">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
+                    </a>
+                    {authenticated && (<>
                         {walletAddress && (
-                            <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/[0.06] border border-white/10">
-                                <Wallet className="w-5 h-5 text-indigo-300/70" />
-                                <span className="text-sm text-white/60 font-mono">
-                                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-                                </span>
+                            <div className="relative" ref={dropdownRef}>
+                                <button
+                                    onClick={() => setShowDropdown(!showDropdown)}
+                                    className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/[0.06] border border-white/10 hover:bg-white/[0.10] hover:border-white/15 transition-all cursor-pointer"
+                                >
+                                    <Wallet className="w-5 h-5 text-indigo-300/70" />
+                                    <span className="text-sm text-white/60 font-mono">
+                                        {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                                    </span>
+                                </button>
+                                <AnimatePresence>
+                                    {showDropdown && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-[#141420] border border-white/10 shadow-xl shadow-black/40 overflow-hidden z-50"
+                                        >
+                                            <button
+                                                onClick={() => { setShowDropdown(false); onDisconnect(); }}
+                                                className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-red-400/80 hover:bg-white/[0.04] hover:text-red-400 transition-colors"
+                                            >
+                                                <LogOut className="w-4 h-4" />
+                                                Disconnect Wallet
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         )}
                         <button
@@ -76,20 +118,7 @@ export default function FloatingNav({ isScrolled, prefersReducedMotion, authenti
                             Dashboard
                             <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                         </button>
-                    </>
-                    ) : (
-                        <button
-                            onClick={onObserve}
-                            className={`group flex items-center gap-2 text-xs font-medium transition-colors duration-300 uppercase tracking-widest px-4 py-2 rounded-full
-                            ${isScrolled
-                                    ? 'bg-white text-black hover:bg-white/90'
-                                    : 'bg-white/10 text-white border border-transparent hover:bg-white/20'}
-                        `}
-                        >
-                            Observe Economy
-                            <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                        </button>
-                    )}
+                    </>)}
                 </div>
             </div>
         </motion.nav>

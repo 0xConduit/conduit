@@ -84,7 +84,7 @@ export default function HeroSection({ opacity, yOffset, prefersReducedMotion, lo
                 </div>
 
                 {/* Center Content */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center px-6 z-10">
+                <div className="absolute inset-0 flex flex-col items-center justify-center px-6 z-10 -mt-20">
                     <div className="flex items-center gap-2 bg-indigo-500/[0.06] border border-indigo-400/[0.12] rounded-full px-4 py-1.5 mb-8">
                         <Layers className="w-3.5 h-3.5 text-indigo-300/50" />
                         <span className="text-xs text-white/50 font-medium">Powering the Autonomous Agent Economy</span>
@@ -130,13 +130,6 @@ export default function HeroSection({ opacity, yOffset, prefersReducedMotion, lo
                         {loginError && (
                             <p className="text-xs text-red-400/80 animate-pulse">{loginError}</p>
                         )}
-                        <button
-                            onClick={() => setViewMode('explore')}
-                            className="group flex items-center gap-2.5 text-white/50 font-medium hover:text-white/70 transition-all duration-200 text-sm"
-                        >
-                            Observe Economy
-                            <ArrowRight className="w-4 h-4 text-white/30 group-hover:text-white/50 transition-colors" />
-                        </button>
                     </div>
                 </div>
 
