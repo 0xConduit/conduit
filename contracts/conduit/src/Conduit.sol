@@ -5,6 +5,7 @@ contract Conduit {
     enum Chain {
         BASE,
         HEDERA,
+        KITEAI,
         ZEROG
     }
     enum Ability {
