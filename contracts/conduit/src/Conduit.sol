@@ -274,6 +274,7 @@ contract Conduit {
         int256 reputation;
         uint256 abilities;
         Chain chain;
+        bool paused;
         bool exists;
     }
 
@@ -302,6 +303,8 @@ contract Conduit {
 
     event AgentRegistered(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
     event AgentUpdated(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
+    event AgentPaused(address indexed agent);
+    event AgentUnpaused(address indexed agent);
     event AgentDeregistered(address indexed agent);
     event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount, uint256 expiry);
     event JobAccepted(uint256 indexed id, uint256 expiry);
@@ -351,13 +354,14 @@ contract Conduit {
         require(name != bytes32(0), "Invalid name");
         Agent storage agent = agents[msg.sender];
         require(!agent.exists, "Agent is already registered");
-        agent.exists = true;
         agent.agent = msg.sender;
         agent.name = name;
         agent.chain = chain;
         agent.price = price;
         agent.reputation = 0;
         agent.abilities = abilities;
+        agent.paused = false;
+        agent.exists = true;
         agentList.push(msg.sender);
         agentIndex[msg.sender] = agentList.length;
         emit AgentRegistered(msg.sender, name, chain, price, abilities);
@@ -406,6 +410,22 @@ contract Conduit {
         emit AgentUpdated(msg.sender, agent.name, agent.chain, agent.price, agent.abilities);
     }
 
+    function pause() public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        require(!agent.paused, "Agent is already paused");
+        agent.paused = true;
+        emit AgentPaused(msg.sender);
+    }
+
+    function unpause() public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        require(agent.paused, "Agent is not paused");
+        agent.paused = false;
+        emit AgentUnpaused(msg.sender);
+    }
+
     function deregister() public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
@@ -429,6 +449,7 @@ contract Conduit {
         require(bytes(prompt).length <= 200, "Invalid prompt");
         Agent storage agent = agents[agent_];
         require(agent.exists, "Agent is not registered");
+        require(!agent.paused, "Agent is paused");
         uint256 amount = agent.price * mins;
         require(msg.value >= amount, "Insufficient funds");
         Job storage job = jobs[counter];
@@ -458,6 +479,8 @@ contract Conduit {
 
     function acceptJob(uint256 id) public {
         require(id < counter, "Invalid job");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
         Job storage job = jobs[id];
         require(msg.sender == job.agent, "Agent does not have access to this job");
         require(!job.accepted, "Job already accepted");
@@ -470,6 +493,8 @@ contract Conduit {
 
     function rejectJob(uint256 id) public {
         require(id < counter, "Invalid job");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
         Job storage job = jobs[id];
         require(msg.sender == job.agent, "Agent does not have access to this job");
         require(!job.rejected, "Job already rejected");
@@ -484,6 +509,8 @@ contract Conduit {
     function completeJob(uint256 id, bytes32 attestation) public {
         require(attestation != bytes32(0), "Invalid attestation");
         require(id < counter, "Invalid job");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
         Job storage job = jobs[id];
         require(msg.sender == job.agent, "Agent does not have access to this job");
         require(job.accepted, "Job not accepted");
@@ -507,7 +534,7 @@ contract Conduit {
         job.rated = true;
         job.rating = rating;
         Agent storage agent = agents[job.agent];
-        require(agent.exists, "Agent deregistered");
+        require(agent.exists, "Agent is not registered");
         agent.reputation += int256(rating) * int256(job.amount);
         emit JobRated(id, rating);
         emit ReputationUpdated(job.agent, agent.reputation);
@@ -523,9 +550,16 @@ contract Conduit {
         require(!agent.exists || block.timestamp >= job.expiry, "Job is not refundable yet");
         job.accepted = false;
         job.rejected = true;
+        if(agent.exists) {
+            job.rated = true;
+            job.rating = -10;
+            agent.reputation += -10 * int256(job.amount);
+            emit JobRated(id, -10);
+            emit ReputationUpdated(job.agent, agent.reputation);
+        }
+        emit JobRefunded(id);
         (bool ok,) = payable(job.renter).call{value: job.amount}("");
         require(ok, "Failed to refund payment to renter");
-        emit JobRefunded(id);
     }
 
     function getAllAgents() external view returns (Agent[] memory out) {
@@ -533,6 +567,25 @@ contract Conduit {
         out = new Agent[](total);
         for (uint256 i = 0; i < total; i++) {
             out[i] = agents[agentList[i]];
+        }
+    }
+
+    function getAllActiveAgents() external view returns (Agent[] memory out) {
+        uint256 total = 0;
+        for (uint256 i = 0; i < agentList.length; i++) {
+            Agent storage agent = agents[agentList[i]];
+            if(!agent.paused) {
+                total++;
+            }
+        }
+        out = new Agent[](total);
+        uint256 j = 0;
+        for (uint256 i = 0; i < agentList.length; i++) {
+            Agent storage agent = agents[agentList[i]];
+            if(!agent.paused) {
+                out[j] = agent;
+                j++;
+            }
         }
     }
 
