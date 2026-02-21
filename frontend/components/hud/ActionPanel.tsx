@@ -719,10 +719,12 @@ function ContractJobsSub({ agentId, onTx }: { agentId: string; onTx: (hash: stri
     // Job actions
     const [jobId, setJobId] = useState('');
     const [attestation, setAttestation] = useState('');
+    const [ratingValue, setRatingValue] = useState(5);
     const [acceptState, setAcceptState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
     const [rejectState, setRejectState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
     const [completeState, setCompleteState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
     const [refundState, setRefundState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [rateState, setRateState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
 
     useEffect(() => {
         if (agentIds.length > 0 && !agentIds.includes(targetId)) setTargetId(agentIds[0]);
@@ -806,6 +808,26 @@ function ContractJobsSub({ agentId, onTx }: { agentId: string; onTx: (hash: stri
                     </button>
                     <button onClick={() => handleJobAction('refund')} disabled={refundState === 'loading' || !jobId} className={actionBtnCls(refundState)}>
                         {stateBtn(refundState, 'Refund')}
+                    </button>
+                </div>
+                <div className="border-t border-white/10 pt-2 mt-1 space-y-2">
+                    <div>
+                        <label className={labelCls}>Rating: {ratingValue > 0 ? `+${ratingValue}` : ratingValue} <span className="normal-case text-white/20">(-10 to +10)</span></label>
+                        <input type="range" min={-10} max={10} step={1} value={ratingValue} onChange={e => setRatingValue(parseInt(e.target.value))} className="w-full accent-violet-400" />
+                    </div>
+                    <button
+                        onClick={async () => {
+                            if (!jobId) return;
+                            setRateState('loading');
+                            const result = await store.contractRateJob(agentId, parseInt(jobId), ratingValue);
+                            setRateState(result ? 'ok' : 'err');
+                            if (result) onTx(result.txHash);
+                            setTimeout(() => setRateState('idle'), 2000);
+                        }}
+                        disabled={rateState === 'loading' || !jobId}
+                        className={actionBtnCls(rateState)}
+                    >
+                        {stateBtn(rateState, 'Rate Job')}
                     </button>
                 </div>
             </div>
@@ -1035,6 +1057,14 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                                     <span className="text-white/30">{j.amount} ETH · {j.mins}min</span>
                                     <span className="text-white/25">{formatExpiry(j.expiry)}</span>
                                 </div>
+                                {j.rated && (
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                        <span className={`text-[9px] font-semibold ${j.rating > 0 ? 'text-emerald-400' : j.rating < 0 ? 'text-red-400' : 'text-white/30'}`}>
+                                            {j.rating > 0 ? `+${j.rating}` : j.rating}
+                                        </span>
+                                        <span className="text-[8px] text-white/20">rated</span>
+                                    </div>
+                                )}
                                 {j.prompt && <div className="text-[9px] text-white/20 truncate">{j.prompt}</div>}
                             </div>
                         ))}
@@ -1064,6 +1094,14 @@ function ContractReadSub({ agentId }: { agentId: string }) {
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">duration</span><span className="text-white/60 font-mono">{lookupJob.mins} min</span></div>
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">expiry</span><span className="text-white/60 font-mono">{formatExpiry(lookupJob.expiry)}</span></div>
                         <div className="flex justify-between text-[9px]"><span className="text-white/30">status</span><span className="text-white/60">{lookupJob.completed ? 'completed' : lookupJob.rejected ? 'rejected' : lookupJob.accepted ? 'accepted' : 'pending'}</span></div>
+                        {lookupJob.rated && (
+                            <div className="flex justify-between text-[9px]">
+                                <span className="text-white/30">rating</span>
+                                <span className={`font-semibold ${lookupJob.rating > 0 ? 'text-emerald-400' : lookupJob.rating < 0 ? 'text-red-400' : 'text-white/40'}`}>
+                                    {lookupJob.rating > 0 ? `+${lookupJob.rating}` : lookupJob.rating}/10
+                                </span>
+                            </div>
+                        )}
                         {lookupJob.prompt && <div className="flex justify-between text-[9px]"><span className="text-white/30">prompt</span><span className="text-white/60 truncate ml-2 max-w-[60%] text-right">{lookupJob.prompt}</span></div>}
                         {lookupJob.attestation && lookupJob.attestation !== '\x00' && <div className="flex justify-between text-[9px]"><span className="text-white/30">attestation</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{lookupJob.attestation}</span></div>}
                     </div>
@@ -1169,9 +1207,13 @@ export default function ActionPanel() {
         <>
             <button
                 onClick={() => setActionPanelOpen(!actionPanelOpen)}
-                className="fixed bottom-16 right-5 z-50 px-3 py-2 rounded-full bg-white/10 border border-white/10 text-white/70 text-xs font-medium backdrop-blur-md hover:bg-white/20 hover:text-white transition-colors"
+                className={`fixed bottom-16 right-6 z-50 px-5 py-3 rounded-lg backdrop-blur-md text-sm font-semibold tracking-wide transition-all duration-200 shadow-lg border ${
+                    actionPanelOpen
+                        ? 'bg-white/5 border-white/20 text-white/60 hover:bg-red-500/10 hover:border-red-400/30 hover:text-red-300'
+                        : 'bg-gradient-to-r from-indigo-500/20 to-violet-500/20 border-indigo-400/30 text-indigo-200 hover:from-indigo-500/30 hover:to-violet-500/30 hover:text-white hover:border-indigo-400/50 hover:shadow-indigo-500/20 hover:shadow-xl'
+                }`}
             >
-                {actionPanelOpen ? '✕ Close' : '⊕ Control Panel'}
+                {actionPanelOpen ? '✕  Close Panel' : '⊕  Control Panel'}
             </button>
 
             <AnimatePresence>
@@ -1181,7 +1223,7 @@ export default function ActionPanel() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
                         transition={{ duration: 0.18 }}
-                        className="fixed bottom-28 right-5 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                        className="fixed bottom-28 right-6 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/10 shrink-0">

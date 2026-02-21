@@ -32,13 +32,15 @@ const CONDUIT_ABI = [
   "function rejectJob(uint256 id) external",
   "function completeJob(uint256 id, bytes32 attestation) external",
   "function refundJob(uint256 id) external",
+  // Jobs — rating
+  "function rateJob(uint256 id, int8 rating) external",
   // Views — explicit getters (return full structs with all fields)
-  "function getAllAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, uint256 reputation, uint256 abilities, uint8 chain, bool exists)[])",
+  "function getAllAgents() external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool exists)[])",
   "function getAgentCount() external view returns (uint256)",
-  "function getAgent(address) external view returns (tuple(address agent, bytes32 name, uint256 price, uint256 reputation, uint256 abilities, uint8 chain, bool exists))",
-  "function getJob(uint256 id) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt))",
-  "function getAllJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt)[])",
-  "function getOpenJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, bool accepted, bool rejected, bool completed, string prompt)[])",
+  "function getAgent(address) external view returns (tuple(address agent, bytes32 name, uint256 price, int256 reputation, uint256 abilities, uint8 chain, bool exists))",
+  "function getJob(uint256 id) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt))",
+  "function getAllJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt)[])",
+  "function getOpenJobs(address agent) external view returns (tuple(uint256 id, address agent, address renter, uint256 mins, uint256 amount, bytes32 attestation, uint256 expiry, int8 rating, bool accepted, bool rejected, bool completed, bool rated, string prompt)[])",
   // Events
   "event AgentRegistered(address indexed agent, bytes32 name, uint8 chain, uint256 price, uint256 abilities)",
   "event AgentUpdated(address indexed agent, bytes32 name, uint8 chain, uint256 price, uint256 abilities)",
@@ -48,6 +50,8 @@ const CONDUIT_ABI = [
   "event JobRejected(uint256 indexed id)",
   "event JobCompleted(uint256 indexed id, bytes32 attestation)",
   "event JobRefunded(uint256 indexed id)",
+  "event JobRated(uint256 indexed id, int8 rating)",
+  "event ReputationUpdated(address indexed agent, int256 reputation)",
 ];
 
 const ZEROG_RPC = process.env.ZEROG_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
@@ -472,6 +476,34 @@ export async function conduitRefundJob(params: {
   }
 }
 
+export async function conduitRateJob(params: {
+  agentId: string;
+  encryptedPrivateKey: string;
+  jobId: number;
+  rating: number;
+}): Promise<{ txHash: string }> {
+  if (!isConfigured) {
+    await delay(200);
+    const txHash = fakeTxHash();
+    logContractTxn(params.agentId, "rateJob", txHash, "confirmed", { jobId: params.jobId, rating: params.rating });
+    return { txHash };
+  }
+
+  try {
+    const signer = getAgentSigner(params.encryptedPrivateKey, ZEROG_RPC);
+    const contract = getReadContract(signer);
+    const tx = await contract.rateJob(params.jobId, params.rating);
+    logContractTxn(params.agentId, "rateJob", tx.hash, "pending", { jobId: params.jobId, rating: params.rating });
+    const receipt = await tx.wait();
+    logContractTxn(params.agentId, "rateJob", receipt?.hash ?? tx.hash, "confirmed");
+    return { txHash: receipt?.hash ?? tx.hash };
+  } catch (err: any) {
+    console.error("[conduit-contract] rateJob failed:", err);
+    logContractTxn(params.agentId, "rateJob", null, "failed", undefined, err?.message);
+    return { txHash: "0x0" };
+  }
+}
+
 // ── Read Functions ───────────────────────────────────────────────────────────────
 
 export async function conduitGetAgent(address: string): Promise<OnChainAgent | null> {
@@ -523,9 +555,11 @@ export interface OnChainJob {
   amount: string;
   attestation: string;
   expiry: number;
+  rating: number;
   accepted: boolean;
   rejected: boolean;
   completed: boolean;
+  rated: boolean;
   prompt: string;
 }
 
@@ -538,9 +572,11 @@ function parseJobTuple(j: any): OnChainJob {
     amount: ethers.formatEther(j.amount),
     attestation: bytes32ToString(j.attestation),
     expiry: Number(j.expiry),
+    rating: Number(j.rating),
     accepted: j.accepted,
     rejected: j.rejected,
     completed: j.completed,
+    rated: j.rated,
     prompt: j.prompt,
   };
 }
@@ -656,6 +692,12 @@ export async function conduitQueryEvents(params: {
           break;
         case "AgentDeregistered":
           filter = contract.filters.AgentDeregistered(params.agentAddress ?? null);
+          break;
+        case "JobRated":
+          filter = contract.filters.JobRated(params.jobId ?? null);
+          break;
+        case "ReputationUpdated":
+          filter = contract.filters.ReputationUpdated(params.agentAddress ?? null);
           break;
         default:
           filter = "*";

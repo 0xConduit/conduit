@@ -16,6 +16,7 @@ import {
   conduitRejectJob,
   conduitCompleteJob,
   conduitRefundJob,
+  conduitRateJob,
   conduitGetAgent,
   conduitGetJob,
   conduitGetJobCount,
@@ -392,6 +393,33 @@ export const handlers: Record<string, Handler> = {
       agentId: params.id,
       encryptedPrivateKey: encryptedKey,
       jobId: body.jobId as number,
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Rate a completed job
+  "POST /api/agents/:id/contract/rate-job": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.jobId === undefined) return json({ error: "jobId is required" }, 400);
+    if (body.rating === undefined) return json({ error: "rating is required (-10 to 10)" }, 400);
+
+    const rating = body.rating as number;
+    if (rating < -10 || rating > 10) return json({ error: "rating must be between -10 and 10" }, 400);
+
+    const result = await conduitRateJob({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      jobId: body.jobId as number,
+      rating,
     });
 
     return json({ txHash: result.txHash });

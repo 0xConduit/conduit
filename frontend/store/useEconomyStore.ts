@@ -75,9 +75,11 @@ export interface OnChainJob {
     amount: string;
     attestation: string;
     expiry: number;
+    rating: number;
     accepted: boolean;
     rejected: boolean;
     completed: boolean;
+    rated: boolean;
     prompt: string;
 }
 
@@ -129,6 +131,7 @@ interface EconomyState {
     contractRejectJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
     contractCompleteJob: (agentId: string, jobId: number, attestation: string) => Promise<{ txHash: string } | null>;
     contractRefundJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
+    contractRateJob: (agentId: string, jobId: number, rating: number) => Promise<{ txHash: string } | null>;
     contractGetOnChainState: (agentId: string) => Promise<Record<string, unknown> | null>;
     fundAgent: (agentId: string, amountEth?: string) => Promise<{ txHash: string } | null>;
 
@@ -318,6 +321,10 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
 
     contractRefundJob: async (agentId, jobId) => {
         return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/refund-job`, { jobId });
+    },
+
+    contractRateJob: async (agentId, jobId, rating) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/rate-job`, { jobId, rating });
     },
 
     contractGetOnChainState: async (agentId) => {
