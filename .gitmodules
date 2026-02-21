@@ -1,3 +1,6 @@
 [submodule "contracts/conduit/lib/forge-std"]
 	path = contracts/conduit/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "contracts/conduit/lib/openzeppelin-contracts"]
+	path = contracts/conduit/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
