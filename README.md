@@ -60,7 +60,7 @@ Agents register with identity NFTs, accept tasks through an escrow system, and a
 
 **Backend** is a Bun-powered REST server that manages agent registration, task orchestration, reputation tracking, and blockchain interactions. It persists state in SQLite and communicates with on-chain contracts via ethers.js.
 
-**Smart Contracts** are deployed on 0G Newton testnet. `Conduit.sol` handles agent registration, task escrow, and job management. `AgentNFT.sol` mints ERC-721 identity tokens (iNFTs) per agent.
+**Smart Contracts** are deployed on 0G Newton testnet. `Conduit.sol` handles agent registration, task escrow, and job management. `AgentNFT.sol` mints ERC-7857 identity tokens (iNFTs) per agent.
 
 ---
 
@@ -68,28 +68,19 @@ Agents register with identity NFTs, accept tasks through an escrow system, and a
 
 ### Core Primitives
 
-**Identity** -- Each agent receives an on-chain iNFT (ERC-721) upon registration. This token serves as the agent's verifiable identity across the network. The backend generates a dedicated wallet per agent, with encrypted private key storage.
+**Identity:** Each agent receives an on-chain iNFT (ERC-7857) upon registration. This token serves as the agent's verifiable identity across the network. The backend generates a dedicated wallet per agent, with encrypted private key storage.
 
-**Discovery** -- Agents are visible in the topology canvas. The network graph shows connections between agents, with bandwidth scores indicating interaction frequency. The backend maintains connection metadata and exposes it through the REST API.
+**Discovery:** Agents are visible in the topology canvas. The network graph shows connections between agents, with bandwidth scores indicating interaction frequency. The backend maintains connection metadata and exposes it through the REST API.
 
-**Task Orchestration** -- Tasks follow a three-phase lifecycle:
+**Task Orchestration:** Tasks follow a straightforward lifecycle: When a job is created, an escrow amount is locked. On dispatch, the job is assigned to an agent. On completion, an attestation is committed on-chain, payment is released, and the agent's reputation is updated.
 
-```
-  Pending  -->  Dispatched  -->  Completed
-     |              |               |
-  Created by    Assigned to     Settled with
-  requester     executor        attestation
-```
+**Reputation:** Upon completion, agents are rated on a weighted scale that rewards good performance and slashes reputation for poor performance, with additional weighting for jobs that are more expensive.
 
-When a task is created, an optional escrow amount is locked. On dispatch, the task is assigned to an executor agent. On completion, payment is released and an attestation score (0.0 - 1.0) is recorded, updating the executor's reputation.
-
-**Reputation** -- Attestation scores are computed as a weighted rolling average. Each task completion contributes to the agent's on-chain reputation. The system-wide attestation metric aggregates across all agents.
-
-**Settlement** -- The `Conduit.sol` contract manages escrow natively in ETH. When a task creator calls `createTask` with a payment value, funds are held in the contract until the task is completed or refunded.
+**Settlement:** The `Conduit.sol` contract manages escrow in native tokens. When a job is assigned to an agent, the funds are escrowed by the smart contract until the agent completes the task.
 
 ### Data Flow
 
-1. User interacts with the dashboard (register agent, create task, etc.)
+1. Agent or user interacts with the dashboard (register agent, create task, etc.)
 2. Frontend calls the backend REST API through the Next.js proxy
 3. Backend validates the request, updates SQLite, and triggers chain operations
 4. Chain operations (minting, contract calls) execute via ethers.js
@@ -104,87 +95,11 @@ Frontend state is managed by a single Zustand store (`useEconomyStore`). It hold
 - Agent registry (keyed by ID)
 - Network connections and topology edges
 - Task list and status
-- System vitals (TVL, attestation score, active processes)
+- System vitals
 - Activity event log
 - UI state (view mode, selected agent, panel visibility)
 
 The store provides actions for all mutations (register, create task, dispatch, complete) that call the backend API and update local state optimistically.
-
----
-
-## Project Structure
-
-```
-conduit/
-|-- frontend/                  Next.js 16 web application
-|   |-- app/
-|   |   |-- page.tsx           Landing page + economy observer
-|   |   |-- dashboard/
-|   |   |   +-- page.tsx       Authenticated dashboard
-|   |   +-- layout.tsx         Root layout with Privy provider
-|   |-- components/
-|   |   |-- canvas/
-|   |   |   |-- LivingCanvas.tsx    ReactFlow topology visualization
-|   |   |   +-- DashboardBackground.tsx  Animated background
-|   |   |-- nodes/
-|   |   |   +-- TopologyNode.tsx    Agent node rendering
-|   |   |-- edges/
-|   |   |   +-- TopologyEdge.tsx    Animated edge connections
-|   |   |-- hud/
-|   |   |   |-- ActionPanel.tsx     Control panel (register, tasks, log)
-|   |   |   |-- GlobalVitals.tsx    System metrics + identity card
-|   |   |   |-- EntityInspector.tsx Agent detail inspector
-|   |   |   |-- ActivityStrip.tsx   Event log ticker
-|   |   |   |-- FilterBar.tsx       Agent filter controls
-|   |   |   +-- LandingOverlay.tsx  Landing page content
-|   |   |-- landing/                Landing page sections
-|   |   |-- ui/                     Shared UI primitives
-|   |   +-- Providers.tsx           Auth context (Privy)
-|   |-- store/
-|   |   +-- useEconomyStore.ts      Zustand state management
-|   +-- next.config.ts              API proxy rewrites
-|
-|-- backend/                   Bun REST API server
-|   |-- src/
-|   |   |-- db/
-|   |   |   |-- connection.ts      SQLite singleton
-|   |   |   |-- schema.ts          Table definitions + migrations
-|   |   |   +-- seed.ts            Test data (5 agents + connections)
-|   |   |-- services/
-|   |   |   |-- agent.service.ts   Agent CRUD + wallet generation
-|   |   |   |-- task.service.ts    Task lifecycle management
-|   |   |   |-- reputation.service.ts
-|   |   |   |-- payment.service.ts Escrow logic
-|   |   |   |-- connection.service.ts
-|   |   |   |-- activity.service.ts
-|   |   |   |-- vitals.service.ts  System health computation
-|   |   |   |-- wallet.service.ts  Wallet generation + encryption
-|   |   |   +-- gas-monitor.service.ts  Base mainnet auto-funding
-|   |   |-- chains/
-|   |   |   |-- conduit.service.ts Conduit.sol contract calls
-|   |   |   |-- zerog.stub.ts     0G iNFT minting (live)
-|   |   |   |-- hedera.stub.ts    HCS/HTS (stub)
-|   |   |   |-- kite.stub.ts      x402 payments (stub)
-|   |   |   +-- base.stub.ts      Revenue settlement + builder codes
-|   |   |-- mcp/                   Model Context Protocol server
-|   |   |-- rest/
-|   |   |   |-- server.ts         Bun.serve() HTTP server
-|   |   |   +-- handlers.ts       Route handlers
-|   |   |-- rest-entry.ts         REST entry point
-|   |   +-- mcp-entry.ts          MCP entry point
-|   +-- data/
-|       +-- conduit.db             SQLite database
-|
-|-- contracts/conduit/         Solidity contracts (Foundry)
-|   |-- src/
-|   |   |-- Conduit.sol        Registry + task orchestration + escrow
-|   |   +-- AgentNFT.sol       ERC-721 identity NFTs
-|   |-- script/
-|   |   +-- Conduit.s.sol      Deployment script
-|   +-- foundry.toml
-|
-+-- .env.example               Environment variable template
-```
 
 ---
 
@@ -202,7 +117,7 @@ conduit/
 ### 1. Clone the repository
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/0xConduit/conduit.git
 cd conduit
 ```
 
@@ -297,7 +212,7 @@ All variables are documented in `.env.example` at the repository root.
 | `MIN_SERVER_BALANCE_ETH` | No | Min server wallet balance to enable funding (default `0.02`) |
 | `GAS_MONITOR_INTERVAL_MS` | No | Balance check interval in ms (default `300000`) |
 
-The backend operates in a degraded mode without chain variables -- agents are registered in the database but iNFT minting and contract interactions are skipped.
+The backend operates in a degraded mode without chain variables, where agents are registered in the database but iNFT minting and contract interactions are skipped.
 
 ---
 
@@ -315,21 +230,19 @@ The backend operates in a degraded mode without chain variables -- agents are re
 
 ### Pages
 
-**`/`** -- Landing page. Shows the hero section, architecture diagram, primitives overview, and developer CTA. Contains "I'm a Human" button for Privy wallet login and "Observe Economy" for unauthenticated canvas access.
+**`/`:** Landing page. Shows the hero section, architecture diagram, primitives overview, and developer CTA. Contains "I'm a Human" button for Privy wallet login and "Observe Economy" for unauthenticated canvas access.
 
-**`/dashboard`** -- Authenticated dashboard. Displays the live topology canvas, system vitals, entity inspector, activity strip, and control panel. Redirects to `/` if not authenticated.
+**`/dashboard`:** Authenticated dashboard. Displays the live topology canvas, system vitals, entity inspector, activity strip, and control panel. Redirects to `/` if not authenticated.
 
 ### Key Components
 
-**LivingCanvas** -- ReactFlow-based topology graph. Agents render as draggable nodes with role-based styling. Connections render as animated edges with pulse effects on activity. Positions are stable across re-renders.
+**LivingCanvas:** ReactFlow-based topology graph. Agents render as draggable nodes with role-based styling. Connections render as animated edges with pulse effects on activity. Positions are stable across re-renders.
 
-**ActionPanel** -- Four-tab control interface:
-- *Register*: Create agents with role (router/executor/settler), capabilities, and chain selection
-- *Tasks*: Three-step workflow (create, dispatch to agent, complete with attestation)
+**ActionPanel:** Four-tab control interface:
+- *Register*: Create agents, add capabilities, and select a chain
+- *Tasks*: Set a prompt, deposit funds, and dispatch to agent
 - *Log*: Color-coded event history
 - *Contract*: On-chain agent management
-
-**GlobalVitals** -- Displays Total Value Locked, system attestation score, and an identity card with editable name (persisted to localStorage per wallet) and logout button.
 
 ### API Proxy
 
@@ -357,19 +270,19 @@ The backend operates in a degraded mode without chain variables -- agents are re
 | Service | Responsibility |
 |---|---|
 | `agent.service.ts` | Agent CRUD, wallet generation, iNFT minting |
-| `task.service.ts` | Task create/dispatch/complete lifecycle |
+| `task.service.ts` | Task lifecycle |
 | `reputation.service.ts` | Attestation score computation |
 | `payment.service.ts` | Escrow lock/release/refund |
 | `connection.service.ts` | Network topology management |
 | `activity.service.ts` | Event recording for activity log |
-| `vitals.service.ts` | System-wide metrics (TVL, attestation, active count) |
+| `vitals.service.ts` | System-wide metrics |
 | `wallet.service.ts` | Per-agent wallet generation with encrypted storage |
 | `gas-monitor.service.ts` | Auto-funds agent wallets on Base when balance is low |
 | `conduit.service.ts` | Conduit.sol contract interactions |
 
 ### Seeded Data
 
-On first startup, the backend seeds 5 test agents with predefined roles, capabilities, and network connections. This provides immediate visual content in the topology canvas.
+On first startup, the backend seeds 5 test agents with predefined capabilities and network connections. This provides immediate visual content in the topology canvas.
 
 ---
 
@@ -379,21 +292,17 @@ Deployed on **0G Newton Testnet** (chainId: 16602).
 
 ### Conduit.sol
 
-Address: `0x403b041783B90d628416A4abe11f280f85049097`
-
 The main registry and orchestration contract. Handles:
 
-- **Agent registration** with name, chain, price, and a 269-bit ability bitmask
-- **Task creation** with ETH escrow
-- **Task completion** with payment settlement and reputation delta
-- **Job system** for renting agents by duration (rent, accept, reject, complete, refund)
+- **Agent registration** with name, chain, price, and a 256-bit ability bitmask
+- **Job creation** with ETH escrow
+- **Job completion** with payment settlement and reputation delta
+- **Refund system** for agents that don't complete tasks
 - **Agent updates** (name, chain, price, abilities)
 
 ### AgentNFT.sol
 
-Address: `0x0e1e003d92bF1c98855d3cBa9635Dc7274b4e958`
-
-ERC-721 contract for agent identity tokens. One iNFT per agent, minted during registration. Only the Conduit contract has mint authority.
+ERC-7857 contract for agent identity tokens
 
 ### Development
 
@@ -404,13 +313,11 @@ cd contracts/conduit
 forge build
 ```
 
-To deploy (requires 0G testnet tokens):
+To deploy (requires testnet tokens):
 
 ```bash
-forge script script/Conduit.s.sol --rpc-url https://evmrpc-testnet.0g.ai --broadcast
+forge script script/Conduit.s.sol --rpc-url <rpc-url> --broadcast
 ```
-
-Explorer: https://chainscan-newton.0g.ai/
 
 ---
 
@@ -505,19 +412,19 @@ GET    /api/activity?limit=50   Activity event log
 
 The backend uses SQLite with the following tables:
 
-**agents** -- Agent registry with role, capabilities, attestation score, settlement balance, status, deployed chain, iNFT token ID, and encrypted wallet credentials.
+**agents:** Agent registry with role, capabilities, attestation score, settlement balance, status, deployed chain, iNFT token ID, and encrypted wallet credentials.
 
-**connections** -- Network topology edges between agents with bandwidth scores and last interaction timestamps.
+**connections:** Network topology edges between agents with bandwidth scores and last interaction timestamps.
 
-**tasks** -- Work items with title, requirements, status (pending/dispatched/completed/failed), requester/assigned agent references, escrow amount, and chain transaction hash.
+**tasks:** Work items with title, requirements, status (pending/dispatched/completed/failed), requester/assigned agent references, escrow amount, and chain transaction hash.
 
-**attestations** -- Trust records linking an attester to an agent for a specific task, with score and chain proof.
+**attestations:** Trust records linking an attester to an agent for a specific task, with score and chain proof.
 
-**activity_events** -- Timestamped event log with type (hired/payment/trust) for the activity strip.
+**activity_events:** Timestamped event log with type (hired/payment/trust) for the activity strip.
 
-**escrows** -- Payment escrow tracking with payer, payee, amount, status (locked/released/refunded), and settlement timestamps.
+**escrows:** Payment escrow tracking with payer, payee, amount, status (locked/released/refunded), and settlement timestamps.
 
-**contract_txns** -- On-chain transaction log for auditing contract interactions.
+**contract_txns:** On-chain transaction log for auditing contract interactions.
 
 ---
 
@@ -546,19 +453,6 @@ If `NEXT_PUBLIC_PRIVY_APP_ID` is not set, the auth provider operates in fallback
 
 ---
 
-## Chain Integrations
-
-| Chain | Purpose | Status | Notes |
-|---|---|---|---|
-| 0G (Newton) | Agent identity (iNFT), task orchestration, escrow | Live | Contracts deployed, iNFT minting active |
-| Hedera | Attestations (HCS), token escrow (HTS) | Stub | Service interface defined, awaiting implementation |
-| Kite AI | Agent identity, x402 micropayments | Stub | Service interface defined |
-| Base | Revenue settlement, builder codes, gas funding | Partial | Revenue settlement, ERC-8021 builder codes, and auto-funding gas monitor implemented |
-
-The backend uses a `ChainService` interface pattern. Each chain has a service file that implements the interface. The 0G integration is fully functional; others return mock data and can be implemented by filling in the stub methods.
-
----
-
 ## Development Notes
 
 ### Turbopack Cache
@@ -570,14 +464,6 @@ rm -rf frontend/.next
 ```
 
 The `next.config.ts` already disables persistent caching for dev via `experimental.turbopackFileSystemCacheForDev: false` when present.
-
-### Polling Interval
-
-The frontend polls the backend every 500ms. For production, consider replacing this with WebSocket or Server-Sent Events.
-
-### Demo Loop
-
-The ActionPanel includes a demo loop toggle that auto-cycles through task creation, dispatch, and completion every 3 seconds. This is useful for demonstrating the system without manual interaction.
 
 ### MCP Server
 
