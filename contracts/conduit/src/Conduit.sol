@@ -279,6 +279,7 @@ contract Conduit {
         address agent;
         address renter;
         uint256 amount;
+        bytes32 attestation;
         bool accepted;
         bool rejected;
         bool completed;
@@ -294,7 +295,7 @@ contract Conduit {
     event JobAccepted(uint256 indexed id);
     event JobRejected(uint256 indexed id);
     event JobCompleted(uint256 indexed id);
-    event JobRefunded(uint256 indexed id);
+    event JobRefunded(uint256 indexed id, bytes32 attestation);
 
     uint256 counter = 0;
 
@@ -442,7 +443,8 @@ contract Conduit {
         emit JobRejected(id);
     }
 
-    function completeJob(uint256 id) public {
+    function completeJob(uint256 id, bytes32 attestation) public {
+        require(attestation != bytes32(0), "Invalid attestation");
         require(id < counter, "Invalid job");
         Job storage job = jobs[id];
         require(msg.sender == job.agent, "Agent does not have access to this job");
@@ -450,9 +452,10 @@ contract Conduit {
         require(!job.rejected, "Job already rejected");
         require(!job.completed, "Job already completed");
         job.completed = true;
+        job.attestation = attestation;
+        emit JobCompleted(id, attestation);
         (bool ok,) = payable(msg.sender).call{value: job.amount}("");
         require(ok, "Failed to issue payment to agent");
-        emit JobCompleted(id);
     }
 
     function refundJob(uint256 id) public {
