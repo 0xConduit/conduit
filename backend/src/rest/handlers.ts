@@ -16,9 +16,13 @@ import {
   conduitRejectJob,
   conduitCompleteJob,
   conduitRefundJob,
-  conduitCreateTask,
-  conduitCompleteTask,
   conduitGetAgent,
+  conduitGetJob,
+  conduitGetJobCount,
+  conduitGetBalance,
+  conduitGetContractBalance,
+  conduitQueryEvents,
+  conduitGetJobsForAgent,
 } from "../chains/conduit.service.js";
 import { getDb } from "../db/connection.js";
 import type { DeployedChain, AgentRole } from "../shared/types.js";
@@ -390,58 +394,6 @@ export const handlers: Record<string, Handler> = {
     return json({ txHash: result.txHash });
   },
 
-  // Create on-chain task
-  "POST /api/agents/:id/contract/create-task": async (req, params) => {
-    let body: Record<string, unknown>;
-    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
-
-    const agent = getAgent(params.id);
-    if (!agent) return json({ error: "Agent not found" }, 404);
-
-    const encryptedKey = getAgentEncryptedKey(params.id);
-    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
-
-    // Resolve assignee agent's wallet address
-    const assigneeAgentId = body.assigneeAgentId as string;
-    let assigneeAddress = body.assigneeAddress as string | undefined;
-    if (!assigneeAddress && assigneeAgentId) {
-      assigneeAddress = getAgentWalletAddress(assigneeAgentId) ?? undefined;
-    }
-    if (!assigneeAddress) return json({ error: "Assignee agent wallet address not found" }, 400);
-
-    const result = await conduitCreateTask({
-      agentId: params.id,
-      encryptedPrivateKey: encryptedKey,
-      assigneeAddress,
-      paymentEth: (body.paymentEth as string) ?? "0",
-    });
-
-    return json({ txHash: result.txHash, taskId: result.taskId });
-  },
-
-  // Complete on-chain task
-  "POST /api/agents/:id/contract/complete-task": async (req, params) => {
-    let body: Record<string, unknown>;
-    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
-
-    const agent = getAgent(params.id);
-    if (!agent) return json({ error: "Agent not found" }, 404);
-
-    const encryptedKey = getAgentEncryptedKey(params.id);
-    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
-
-    if (body.taskId === undefined) return json({ error: "taskId is required" }, 400);
-
-    const result = await conduitCompleteTask({
-      agentId: params.id,
-      encryptedPrivateKey: encryptedKey,
-      taskId: body.taskId as number,
-      reputationDelta: (body.reputationDelta as number) ?? 0,
-    });
-
-    return json({ txHash: result.txHash });
-  },
-
   // Fund agent wallet with gas
   "POST /api/agents/:id/fund": async (req, params) => {
     const agent = getAgent(params.id);
@@ -456,5 +408,82 @@ export const handlers: Record<string, Handler> = {
 
     const result = await fundAgentWallet(agent.walletAddress, amountEth);
     return json({ txHash: result.txHash });
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── Contract Read Endpoints ───────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Get total job count (+ optional ?recent=true&limit=N for recent jobs)
+  "GET /api/contract/jobs": async (req) => {
+    const url = new URL(req.url);
+    const recent = url.searchParams.get("recent") === "true";
+    const limit = parseInt(url.searchParams.get("limit") || "10", 10);
+
+    const count = await conduitGetJobCount();
+    if (!recent) return json({ count });
+
+    // Fetch the most recent jobs by reading backwards from count
+    const jobs = [];
+    for (let i = count - 1; i >= Math.max(0, count - limit); i--) {
+      const job = await conduitGetJob(i);
+      if (job) jobs.push(job);
+    }
+    return json({ count, jobs });
+  },
+
+  // Get a specific job by ID
+  "GET /api/contract/jobs/:jobId": async (_req, params) => {
+    const jobId = parseInt(params.jobId, 10);
+    if (isNaN(jobId)) return json({ error: "Invalid jobId" }, 400);
+
+    const job = await conduitGetJob(jobId);
+    if (!job) return json({ error: "Job not found" }, 404);
+    return json(job);
+  },
+
+  // Get contract's held ETH balance
+  "GET /api/contract/balance": async () => {
+    const balance = await conduitGetContractBalance();
+    return json({ balance });
+  },
+
+  // Get ETH balance for any address
+  "GET /api/contract/balance/:address": async (_req, params) => {
+    const balance = await conduitGetBalance(params.address);
+    return json({ address: params.address, balance });
+  },
+
+  // Query contract events with filters
+  "GET /api/contract/events": async (req) => {
+    const url = new URL(req.url);
+    const events = await conduitQueryEvents({
+      eventType: url.searchParams.get("type") ?? undefined,
+      agentAddress: url.searchParams.get("agent") ?? undefined,
+      jobId: url.searchParams.has("jobId") ? parseInt(url.searchParams.get("jobId")!, 10) : undefined,
+      fromBlock: url.searchParams.has("fromBlock") ? parseInt(url.searchParams.get("fromBlock")!, 10) : undefined,
+      limit: url.searchParams.has("limit") ? parseInt(url.searchParams.get("limit")!, 10) : undefined,
+    });
+    return json({ events });
+  },
+
+  // Get all on-chain jobs for an agent
+  "GET /api/agents/:id/contract/jobs": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+    if (!agent.walletAddress) return json({ error: "Agent has no wallet" }, 400);
+
+    const jobs = await conduitGetJobsForAgent(agent.walletAddress);
+    return json({ jobs });
+  },
+
+  // Get ETH balance for an agent's wallet
+  "GET /api/agents/:id/contract/balance": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+    if (!agent.walletAddress) return json({ error: "Agent has no wallet" }, 400);
+
+    const balance = await conduitGetBalance(agent.walletAddress);
+    return json({ walletAddress: agent.walletAddress, balance });
   },
 };

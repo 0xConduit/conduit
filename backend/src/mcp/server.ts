@@ -4,6 +4,7 @@ import { registerRegistryTools } from "./tools/registry.tools.js";
 import { registerTaskTools } from "./tools/task.tools.js";
 import { registerReputationTools } from "./tools/reputation.tools.js";
 import { registerPaymentTools } from "./tools/payment.tools.js";
+import { registerContractTools } from "./tools/contract.tools.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -16,6 +17,7 @@ export function createMcpServer(): McpServer {
   registerTaskTools(server);
   registerReputationTools(server);
   registerPaymentTools(server);
+  registerContractTools(server);
 
   return server;
 }

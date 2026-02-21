@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ReactFlow, Background, OnSelectionChangeParams, Node, Edge, NodeChange, applyNodeChanges } from '@xyflow/react';
+import { ReactFlow, Background, Node, Edge, NodeChange, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useEconomyStore, AgentEntity, NetworkConnection } from '../../store/useEconomyStore';
@@ -36,7 +36,6 @@ export default function LivingCanvas() {
     const setSelectedAgent  = useEconomyStore(state => state.setSelectedAgent);
 
     const initialized        = useRef(false);
-    const selectedAgentIdRef = useRef<string | null>(useEconomyStore.getState().selectedAgentId);
     const positionCache      = useRef<Record<string, { x: number; y: number }>>({});
     const dynamicSlotIndex   = useRef(0);
 
@@ -87,21 +86,9 @@ export default function LivingCanvas() {
     }, [initializeNetwork]);
 
     useEffect(() => {
-        const unsub = useEconomyStore.subscribe(
-            state => { selectedAgentIdRef.current = state.selectedAgentId; }
-        );
-        return unsub;
-    }, []);
-
-    useEffect(() => {
         const interval = setInterval(() => networkTick(), 500);
         return () => clearInterval(interval);
     }, [networkTick]);
-
-    const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
-        const newId = params.nodes.length > 0 ? params.nodes[0].id : null;
-        if (newId !== selectedAgentIdRef.current) setSelectedAgent(newId);
-    }, [setSelectedAgent]);
 
     const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
         setSelectedAgent(node.id);
@@ -123,7 +110,6 @@ export default function LivingCanvas() {
                 nodes={rfNodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
-                onSelectionChange={handleSelectionChange}
                 onNodeClick={handleNodeClick}
                 onPaneClick={handlePaneClick}
                 nodeTypes={nodeTypes}

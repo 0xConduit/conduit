@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEconomyStore, type DeployedChain, type AgentRole, type Task, type AgentEntity } from '../../store/useEconomyStore';
+import { useEconomyStore, type DeployedChain, type AgentRole, type Task, type AgentEntity, type OnChainJob, type ContractEvent } from '../../store/useEconomyStore';
 
 // ── Chain metadata ─────────────────────────────────────────────────────────────
 const CHAINS: { value: DeployedChain; label: string; description: string; color: string; dot: string }[] = [
@@ -452,7 +452,7 @@ function TaskLog() {
 }
 
 // ── Contract Panel ─────────────────────────────────────────────────────────────
-type ContractSubTab = 'register' | 'update' | 'jobs' | 'tasks';
+type ContractSubTab = 'register' | 'update' | 'jobs' | 'read';
 
 function ContractPanel() {
     const store = useEconomyStore();
@@ -480,7 +480,7 @@ function ContractPanel() {
         { id: 'register', label: 'Register' },
         { id: 'update',   label: 'Update' },
         { id: 'jobs',     label: 'Jobs' },
-        { id: 'tasks',    label: 'Tasks' },
+        { id: 'read',     label: 'Read' },
     ];
 
     return (
@@ -539,7 +539,7 @@ function ContractPanel() {
             {subTab === 'register' && <ContractRegisterSub agentId={selectedAgentId} onTx={setTxResult} />}
             {subTab === 'update' && <ContractUpdateSub agentId={selectedAgentId} onTx={setTxResult} />}
             {subTab === 'jobs' && <ContractJobsSub agentId={selectedAgentId} onTx={setTxResult} />}
-            {subTab === 'tasks' && <ContractTasksSub agentId={selectedAgentId} onTx={setTxResult} />}
+            {subTab === 'read' && <ContractReadSub agentId={selectedAgentId} />}
 
             {/* Tx result toast */}
             {txResult && <TxToast txHash={txResult} onDismiss={() => setTxResult(null)} />}
@@ -813,86 +813,229 @@ function ContractJobsSub({ agentId, onTx }: { agentId: string; onTx: (hash: stri
     );
 }
 
-// ── Contract > Tasks sub-tab ───────────────────────────────────────────────────
-function ContractTasksSub({ agentId, onTx }: { agentId: string; onTx: (hash: string) => void }) {
+// ── Contract > Read sub-tab ────────────────────────────────────────────────────
+function ContractReadSub({ agentId }: { agentId: string }) {
     const store = useEconomyStore();
-    const agents = store.agents;
-    const agentIds = Object.keys(agents);
+    const agent = store.agents[agentId];
 
-    // Create task
-    const [assigneeId, setAssigneeId] = useState(agentIds[0] || '');
-    const [paymentEth, setPaymentEth] = useState('0.01');
-    const [createState, setCreateState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    // On-chain profile
+    const [onChainProfile, setOnChainProfile] = useState<Record<string, unknown> | null>(null);
+    const [profileLoading, setProfileLoading] = useState(false);
 
-    // Complete task
-    const [taskId, setTaskId] = useState('');
-    const [repDelta, setRepDelta] = useState('1');
-    const [completeState, setCompleteState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    // Agent ETH balance
+    const [agentBalance, setAgentBalance] = useState<string | null>(null);
+    const [balanceLoading, setBalanceLoading] = useState(false);
 
-    useEffect(() => {
-        if (agentIds.length > 0 && !agentIds.includes(assigneeId)) setAssigneeId(agentIds[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [agentIds.join(',')]);
+    // Agent's on-chain jobs
+    const [agentJobs, setAgentJobs] = useState<OnChainJob[]>([]);
+    const [jobsLoading, setJobsLoading] = useState(false);
 
-    async function handleCreateTask(e: React.FormEvent) {
-        e.preventDefault();
-        setCreateState('loading');
-        const result = await store.contractCreateTask(agentId, { assigneeAgentId: assigneeId, paymentEth });
-        setCreateState(result ? 'ok' : 'err');
-        if (result) onTx(result.txHash);
-        setTimeout(() => setCreateState('idle'), 2000);
+    // Job lookup by ID
+    const [lookupJobId, setLookupJobId] = useState('');
+    const [lookupJob, setLookupJob] = useState<OnChainJob | null>(null);
+    const [lookupState, setLookupState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    // Contract balance
+    const [contractBalance, setContractBalance] = useState<string | null>(null);
+    const [contractBalLoading, setContractBalLoading] = useState(false);
+
+    // Recent events
+    const [events, setEvents] = useState<ContractEvent[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(false);
+
+    // Job count
+    const [jobCount, setJobCount] = useState<number | null>(null);
+
+    async function loadProfile() {
+        setProfileLoading(true);
+        const data = await store.contractGetOnChainState(agentId);
+        setOnChainProfile(data);
+        setProfileLoading(false);
     }
 
-    async function handleCompleteTask(e: React.FormEvent) {
+    async function loadBalance() {
+        if (!agent?.walletAddress) return;
+        setBalanceLoading(true);
+        const data = await store.contractGetBalance(agent.walletAddress);
+        setAgentBalance(data?.balance ?? null);
+        setBalanceLoading(false);
+    }
+
+    async function loadAgentJobs() {
+        setJobsLoading(true);
+        const jobs = await store.contractGetAgentJobs(agentId);
+        setAgentJobs(jobs);
+        setJobsLoading(false);
+    }
+
+    async function handleLookupJob(e: React.FormEvent) {
         e.preventDefault();
-        if (!taskId) return;
-        setCompleteState('loading');
-        const result = await store.contractCompleteTask(agentId, parseInt(taskId), parseInt(repDelta));
-        setCompleteState(result ? 'ok' : 'err');
-        if (result) onTx(result.txHash);
-        setTimeout(() => setCompleteState('idle'), 2000);
+        if (!lookupJobId) return;
+        setLookupState('loading');
+        const job = await store.contractGetJob(parseInt(lookupJobId));
+        setLookupJob(job);
+        setLookupState(job ? 'ok' : 'err');
+        setTimeout(() => setLookupState('idle'), 3000);
+    }
+
+    async function loadContractBalance() {
+        setContractBalLoading(true);
+        const data = await store.contractGetContractBalance();
+        setContractBalance(data?.balance ?? null);
+        setContractBalLoading(false);
+    }
+
+    async function loadEvents() {
+        setEventsLoading(true);
+        const data = await store.contractQueryEvents({ limit: 20 });
+        setEvents(data);
+        setEventsLoading(false);
+    }
+
+    async function loadJobCount() {
+        const data = await store.contractGetJobCount();
+        setJobCount(data.count);
     }
 
     return (
         <div className="space-y-3">
-            {/* Create Task */}
+            {/* Agent On-Chain Profile */}
             <div className={sectionCls}>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest">Create On-Chain Task</p>
-                <form onSubmit={handleCreateTask} className="space-y-2">
-                    <div>
-                        <label className={labelCls}>Assignee Agent</label>
-                        <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)} className={selectCls}>
-                            {agentIds.filter(id => id !== agentId).map(id => (
-                                <option key={id} value={id}>{id}{agents[id]?.walletAddress ? ` (${truncateAddr(agents[id].walletAddress!)})` : ''}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Payment (ETH)</label>
-                        <input value={paymentEth} onChange={e => setPaymentEth(e.target.value)} placeholder="0.01" className={inputCls} />
-                    </div>
-                    <button type="submit" disabled={createState === 'loading'} className={actionBtnCls(createState)}>
-                        {stateBtn(createState, 'Create Task')}
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">On-Chain Profile</p>
+                    <button onClick={loadProfile} disabled={profileLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {profileLoading ? 'loading...' : 'refresh'}
                     </button>
-                </form>
+                </div>
+                {onChainProfile ? (
+                    <div className="space-y-0.5">
+                        {Object.entries(onChainProfile).map(([k, v]) => (
+                            <div key={k} className="flex justify-between text-[9px]">
+                                <span className="text-white/30">{k}</span>
+                                <span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{String(v)}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[9px] text-white/20">Click refresh to load</p>
+                )}
             </div>
 
-            {/* Complete Task */}
+            {/* Agent ETH Balance */}
             <div className={sectionCls}>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest">Complete On-Chain Task</p>
-                <form onSubmit={handleCompleteTask} className="space-y-2">
-                    <div>
-                        <label className={labelCls}>Task ID</label>
-                        <input value={taskId} onChange={e => setTaskId(e.target.value)} placeholder="0" className={inputCls} />
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Agent ETH Balance</p>
+                    <button onClick={loadBalance} disabled={balanceLoading || !agent?.walletAddress} className="text-[9px] text-white/40 hover:text-white/70">
+                        {balanceLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                {agentBalance !== null ? (
+                    <p className="text-xs text-emerald-400 font-mono">{agentBalance} ETH</p>
+                ) : (
+                    <p className="text-[9px] text-white/20">{agent?.walletAddress ? 'Click refresh to load' : 'No wallet'}</p>
+                )}
+            </div>
+
+            {/* Agent On-Chain Jobs */}
+            <div className={sectionCls}>
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Agent Jobs</p>
+                    <button onClick={loadAgentJobs} disabled={jobsLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {jobsLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                {agentJobs.length > 0 ? (
+                    <div className="space-y-1">
+                        {agentJobs.map(j => (
+                            <div key={j.jobId} className="border border-white/10 rounded px-2 py-1.5 bg-white/[0.02]">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] text-white/50 font-mono">Job #{j.jobId}</span>
+                                    <span className={`text-[9px] px-1 py-0.5 rounded border font-semibold ${
+                                        j.completed ? 'text-emerald-400 border-emerald-400/30' :
+                                        j.rejected ? 'text-red-400 border-red-400/30' :
+                                        j.accepted ? 'text-blue-400 border-blue-400/30' :
+                                        'text-yellow-400 border-yellow-400/30'
+                                    }`}>
+                                        {j.completed ? 'completed' : j.rejected ? 'rejected' : j.accepted ? 'accepted' : 'pending'}
+                                    </span>
+                                </div>
+                                <div className="text-[9px] text-white/30 font-mono truncate mt-0.5">{j.amount} ETH</div>
+                                {j.prompt && <div className="text-[9px] text-white/20 truncate">{j.prompt}</div>}
+                            </div>
+                        ))}
                     </div>
+                ) : (
+                    <p className="text-[9px] text-white/20">Click refresh to load</p>
+                )}
+            </div>
+
+            {/* Job Lookup */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Job Lookup</p>
+                <form onSubmit={handleLookupJob} className="space-y-2">
                     <div>
-                        <label className={labelCls}>Reputation Delta</label>
-                        <input type="number" value={repDelta} onChange={e => setRepDelta(e.target.value)} className={inputCls} />
+                        <label className={labelCls}>Job ID</label>
+                        <input value={lookupJobId} onChange={e => setLookupJobId(e.target.value)} placeholder="0" className={inputCls} />
                     </div>
-                    <button type="submit" disabled={completeState === 'loading' || !taskId} className={actionBtnCls(completeState)}>
-                        {stateBtn(completeState, 'Complete Task')}
+                    <button type="submit" disabled={lookupState === 'loading' || !lookupJobId} className={actionBtnCls(lookupState)}>
+                        {stateBtn(lookupState, 'Look Up')}
                     </button>
                 </form>
+                {lookupJob && (
+                    <div className="space-y-0.5 mt-2">
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">agent</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{truncateAddr(lookupJob.agent)}</span></div>
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">renter</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{truncateAddr(lookupJob.renter)}</span></div>
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">amount</span><span className="text-white/60 font-mono">{lookupJob.amount} ETH</span></div>
+                        <div className="flex justify-between text-[9px]"><span className="text-white/30">status</span><span className="text-white/60">{lookupJob.completed ? 'completed' : lookupJob.rejected ? 'rejected' : lookupJob.accepted ? 'accepted' : 'pending'}</span></div>
+                        {lookupJob.prompt && <div className="flex justify-between text-[9px]"><span className="text-white/30">prompt</span><span className="text-white/60 truncate ml-2 max-w-[60%] text-right">{lookupJob.prompt}</span></div>}
+                        {lookupJob.attestation && lookupJob.attestation !== '\x00' && <div className="flex justify-between text-[9px]"><span className="text-white/30">attestation</span><span className="text-white/60 font-mono truncate ml-2 max-w-[60%] text-right">{lookupJob.attestation}</span></div>}
+                    </div>
+                )}
+            </div>
+
+            {/* Contract Balance + Job Count */}
+            <div className={sectionCls}>
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Contract Stats</p>
+                    <button onClick={() => { loadContractBalance(); loadJobCount(); }} disabled={contractBalLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {contractBalLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                <div className="space-y-0.5">
+                    <div className="flex justify-between text-[9px]">
+                        <span className="text-white/30">Escrowed ETH</span>
+                        <span className="text-emerald-400 font-mono">{contractBalance ?? '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-[9px]">
+                        <span className="text-white/30">Total Jobs</span>
+                        <span className="text-white/60 font-mono">{jobCount ?? '—'}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Recent Events */}
+            <div className={sectionCls}>
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest">Recent Events</p>
+                    <button onClick={loadEvents} disabled={eventsLoading} className="text-[9px] text-white/40 hover:text-white/70">
+                        {eventsLoading ? 'loading...' : 'refresh'}
+                    </button>
+                </div>
+                {events.length > 0 ? (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {events.map((ev, i) => (
+                            <div key={i} className="border border-white/10 rounded px-2 py-1 bg-white/[0.02]">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] text-white/50 font-semibold">{ev.eventName}</span>
+                                    <span className="text-[8px] text-white/20 font-mono">#{ev.blockNumber}</span>
+                                </div>
+                                <div className="text-[8px] text-white/20 font-mono truncate">{ev.transactionHash}</div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-[9px] text-white/20">Click refresh to load</p>
+                )}
             </div>
         </div>
     );

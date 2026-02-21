@@ -57,6 +57,25 @@ export interface Task {
     chainTxHash?: string;
 }
 
+export interface OnChainJob {
+    jobId: number;
+    agent: string;
+    renter: string;
+    amount: string;
+    attestation: string;
+    accepted: boolean;
+    rejected: boolean;
+    completed: boolean;
+    prompt: string;
+}
+
+export interface ContractEvent {
+    eventName: string;
+    blockNumber: number;
+    transactionHash: string;
+    args: Record<string, string>;
+}
+
 interface Vitals {
     totalValueLocked: number;
     systemAttestation: number;
@@ -89,7 +108,7 @@ interface EconomyState {
     dispatchTask: (taskId: string, agentId: string) => Promise<Task | null>;
     completeTask: (taskId: string, result?: string, attestationScore?: number) => Promise<Task | null>;
 
-    // Contract operations
+    // Contract write operations
     contractRegister: (agentId: string, params: { name: string; chain?: string; pricePerMinute?: string; abilitiesMask?: string }) => Promise<{ txHash: string } | null>;
     contractDeregister: (agentId: string) => Promise<{ txHash: string } | null>;
     contractUpdate: (agentId: string, params: { name?: string; chain?: string; pricePerMinute?: string; abilitiesMask?: string }) => Promise<{ updates: { field: string; txHash: string }[] } | null>;
@@ -98,10 +117,16 @@ interface EconomyState {
     contractRejectJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
     contractCompleteJob: (agentId: string, jobId: number, attestation: string) => Promise<{ txHash: string } | null>;
     contractRefundJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
-    contractCreateTask: (agentId: string, params: { assigneeAgentId: string; paymentEth: string }) => Promise<{ txHash: string; taskId?: string } | null>;
-    contractCompleteTask: (agentId: string, taskId: number, reputationDelta: number) => Promise<{ txHash: string } | null>;
     contractGetOnChainState: (agentId: string) => Promise<Record<string, unknown> | null>;
     fundAgent: (agentId: string, amountEth?: string) => Promise<{ txHash: string } | null>;
+
+    // Contract read operations
+    contractGetJob: (jobId: number) => Promise<OnChainJob | null>;
+    contractGetJobCount: () => Promise<{ count: number; jobs?: OnChainJob[] }>;
+    contractGetBalance: (address: string) => Promise<{ address: string; balance: string } | null>;
+    contractGetContractBalance: () => Promise<{ balance: string } | null>;
+    contractQueryEvents: (params?: { type?: string; agent?: string; jobId?: number; fromBlock?: number; limit?: number }) => Promise<ContractEvent[]>;
+    contractGetAgentJobs: (agentId: string) => Promise<OnChainJob[]>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -280,20 +305,45 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
         return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/refund-job`, { jobId });
     },
 
-    contractCreateTask: async (agentId, params) => {
-        return postJson<{ txHash: string; taskId?: string }>(`/api/agents/${agentId}/contract/create-task`, params);
-    },
-
-    contractCompleteTask: async (agentId, taskId, reputationDelta) => {
-        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/complete-task`, { taskId, reputationDelta });
-    },
-
     contractGetOnChainState: async (agentId) => {
         return fetchJson<Record<string, unknown>>(`/api/agents/${agentId}/contract`);
     },
 
     fundAgent: async (agentId, amountEth) => {
         return postJson<{ txHash: string }>(`/api/agents/${agentId}/fund`, amountEth ? { amountEth } : {});
+    },
+
+    // ── Contract read operations ────────────────────────────────────────────
+    contractGetJob: async (jobId) => {
+        return fetchJson<OnChainJob>(`/api/contract/jobs/${jobId}`);
+    },
+
+    contractGetJobCount: async () => {
+        return (await fetchJson<{ count: number; jobs?: OnChainJob[] }>('/api/contract/jobs')) ?? { count: 0 };
+    },
+
+    contractGetBalance: async (address) => {
+        return fetchJson<{ address: string; balance: string }>(`/api/contract/balance/${address}`);
+    },
+
+    contractGetContractBalance: async () => {
+        return fetchJson<{ balance: string }>('/api/contract/balance');
+    },
+
+    contractQueryEvents: async (params) => {
+        const qs = new URLSearchParams();
+        if (params?.type) qs.set('type', params.type);
+        if (params?.agent) qs.set('agent', params.agent);
+        if (params?.jobId !== undefined) qs.set('jobId', String(params.jobId));
+        if (params?.fromBlock !== undefined) qs.set('fromBlock', String(params.fromBlock));
+        if (params?.limit !== undefined) qs.set('limit', String(params.limit));
+        const result = await fetchJson<{ events: ContractEvent[] }>(`/api/contract/events?${qs.toString()}`);
+        return result?.events ?? [];
+    },
+
+    contractGetAgentJobs: async (agentId) => {
+        const result = await fetchJson<{ jobs: OnChainJob[] }>(`/api/agents/${agentId}/contract/jobs`);
+        return result?.jobs ?? [];
     },
 
     networkTick: async () => {

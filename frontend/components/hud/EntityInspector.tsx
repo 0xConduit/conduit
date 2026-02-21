@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, Zap, Box } from 'lucide-react';
 
 export default function EntityInspector() {
-    const { selectedAgentId, agents } = useEconomyStore();
+    const { selectedAgentId, agents, setSelectedAgent } = useEconomyStore();
 
     const agent = selectedAgentId ? agents[selectedAgentId] : null;
 
@@ -29,9 +29,17 @@ export default function EntityInspector() {
                                 <Box className="w-4 h-4 text-white/50" />
                                 <h2 className="text-xs font-semibold tracking-[0.2em] text-white/90">ENTITY_INSP</h2>
                             </div>
-                            <span className="text-[9px] text-white/40 uppercase tracking-widest border border-white/10 px-1.5 py-0.5 bg-white/5">
-                                {agent.role}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-white/40 uppercase tracking-widest border border-white/10 px-1.5 py-0.5 bg-white/5">
+                                    {agent.role}
+                                </span>
+                                <button
+                                    onClick={() => setSelectedAgent(null)}
+                                    className="text-white/30 hover:text-white/70 transition-colors text-xs leading-none px-1"
+                                >
+                                    ✕
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-6">
