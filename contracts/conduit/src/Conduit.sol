@@ -281,8 +281,10 @@ contract Conduit {
         uint256 id;
         address agent;
         address renter;
+        uint256 mins;
         uint256 amount;
         bytes32 attestation;
+        uint256 expiry;
         bool accepted;
         bool rejected;
         bool completed;
@@ -299,8 +301,8 @@ contract Conduit {
     event AgentRegistered(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
     event AgentUpdated(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
     event AgentDeregistered(address indexed agent);
-    event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount);
-    event JobAccepted(uint256 indexed id);
+    event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount, uint256 expiry);
+    event JobAccepted(uint256 indexed id, uint256 expiry);
     event JobRejected(uint256 indexed id);
     event JobCompleted(uint256 indexed id, bytes32 attestation);
     event JobRefunded(uint256 indexed id);
@@ -429,14 +431,17 @@ contract Conduit {
         job.id = counter;
         job.agent = agent_;
         job.renter = msg.sender;
+        job.mins = mins;
         job.amount = amount;
+        job.attestation = bytes32(0);
+        job.expiry = block.timestamp + 300;
         job.accepted = false;
         job.rejected = false;
         job.completed = false;
         job.prompt = prompt;
         agentJobs[agent_].push(counter);
         counter++;
-        emit JobCreated(counter - 1, agent_, msg.sender, mins, amount);
+        emit JobCreated(counter - 1, agent_, msg.sender, mins, amount, job.expiry);
         uint256 refund = msg.value - amount;
         if (refund > 0) {
             (bool ok,) = payable(msg.sender).call{value: refund}("");
@@ -453,7 +458,8 @@ contract Conduit {
         require(!job.rejected, "Job already rejected");
         require(!job.completed, "Job already completed");
         job.accepted = true;
-        emit JobAccepted(id);
+        job.expiry = block.timestamp + (job.mins * 60) + 600;
+        emit JobAccepted(id, job.expiry);
     }
 
     function rejectJob(uint256 id) public {
@@ -491,7 +497,7 @@ contract Conduit {
         require(!job.rejected, "Job already rejected");
         require(!job.completed, "Job already completed");
         Agent storage agent = agents[job.agent];
-        require(!agent.exists, "Agent still exists");
+        require(!agent.exists || block.timestamp >= job.expiry, "Job is not refundable yet");
         job.accepted = false;
         job.rejected = true;
         (bool ok,) = payable(job.renter).call{value: job.amount}("");
