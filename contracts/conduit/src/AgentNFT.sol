@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransient.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
@@ -17,7 +17,7 @@ import "./Utils.sol";
 
 contract AgentNFT is
     AccessControlUpgradeable,
-    ReentrancyGuardUpgradeable,
+    ReentrancyGuardTransient,
     PausableUpgradeable,
     ERC7857CloneableUpgradeable,
     ERC7857AuthorizeUpgradeable,
