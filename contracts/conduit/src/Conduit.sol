@@ -275,7 +275,19 @@ contract Conduit {
         bool exists;
     }
 
+    struct Job {
+        address agent;
+        address renter;
+        uint256 amount;
+        bool accepted;
+        bool rejected;
+        bool completed;
+    }
+
     mapping(address => Agent) public agents;
+    mapping(uint256 => Job) public jobs;
+
+    uint256 counter = 0;
 
     function _bit(Ability ability) internal pure returns (uint256) {
         uint256 a = uint256(ability);
@@ -362,5 +374,74 @@ contract Conduit {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         delete agents[msg.sender];
+    }
+
+    function rentAgent(address id, uint256 mins) public payable returns (uint256) {
+        Agent storage agent = agents[id];
+        require(agent.exists, "Agent is not registered");
+        uint256 amount = agent.price * mins;
+        require(msg.value >= amount, "Insufficient funds");
+        Job storage job = jobs[counter];
+        job.agent = id;
+        job.renter = msg.sender;
+        job.amount = amount;
+        job.accepted = false;
+        job.rejected = false;
+        job.completed = false;
+        counter++;
+        uint256 refund = msg.value - amount;
+        if (refund > 0) {
+            (bool ok,) = payable(msg.sender).call{value: refund}("");
+            require(ok, "Failed to refund excess payment");
+        }
+        return counter - 1;
+    }
+
+    function acceptJob(uint256 id) public {
+        require(id < counter, "Invalid job");
+        Job storage job = jobs[id];
+        require(msg.sender == job.agent, "Agent does not have access to this job");
+        require(!job.accepted, "Job already accepted");
+        require(!job.rejected, "Job already rejected");
+        require(!job.completed, "Job already completed");
+        job.accepted = true;
+    }
+
+    function rejectJob(uint256 id) public {
+        require(id < counter, "Invalid job");
+        Job storage job = jobs[id];
+        require(msg.sender == job.agent, "Agent does not have access to this job");
+        require(!job.rejected, "Job already rejected");
+        require(!job.completed, "Job already completed");
+        job.accepted = false;
+        job.rejected = true;
+        (bool ok,) = payable(job.renter).call{value: job.amount}("");
+        require(ok, "Failed to refund payment to renter");
+    }
+
+    function completeJob(uint256 id) public {
+        require(id < counter, "Invalid job");
+        Job storage job = jobs[id];
+        require(msg.sender == job.agent, "Agent does not have access to this job");
+        require(job.accepted, "Job not accepted");
+        require(!job.rejected, "Job already rejected");
+        require(!job.completed, "Job already completed");
+        job.completed = true;
+        (bool ok,) = payable(msg.sender).call{value: job.amount}("");
+        require(ok, "Failed to issue payment to agent");
+    }
+
+    function refundJob(uint256 id) public {
+        require(id < counter, "Invalid job");
+        Job storage job = jobs[id];
+        require(msg.sender == job.renter, "Renter does not have access to this job");
+        require(!job.rejected, "Job already rejected");
+        require(!job.completed, "Job already completed");
+        Agent storage agent = agents[job.agent];
+        require(!agent.exists, "Agent still exists");
+        job.accepted = false;
+        job.rejected = true;
+        (bool ok,) = payable(job.renter).call{value: job.amount}("");
+        require(ok, "Failed to refund payment to renter");
     }
 }

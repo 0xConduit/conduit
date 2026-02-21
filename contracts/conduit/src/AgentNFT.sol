@@ -7,7 +7,7 @@ pragma solidity ^0.8.13;
 ///         contract may mint (enforced via the `minter` role set at deploy time).
 contract AgentNFT {
     // ── Metadata ────────────────────────────────────────────────────────────
-    string public name   = "Conduit Agent";
+    string public name = "Conduit Agent";
     string public symbol = "CAGT";
 
     // ── Storage ─────────────────────────────────────────────────────────────
@@ -41,10 +41,10 @@ contract AgentNFT {
         require(tokenOfAgent[to] == 0 && ownerOf[0] != to, "AgentNFT: already minted");
 
         tokenId = _nextTokenId++;
-        ownerOf[tokenId]    = to;
+        ownerOf[tokenId] = to;
         balanceOf[to]++;
         agentAddress[tokenId] = to;
-        tokenOfAgent[to]    = tokenId;
+        tokenOfAgent[to] = tokenId;
 
         emit Transfer(address(0), to, tokenId);
         emit AgentMinted(to, tokenId);
