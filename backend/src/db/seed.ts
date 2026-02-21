@@ -16,19 +16,19 @@ export function seedDatabase(): void {
 
   // Seed 5 agents matching frontend's initializeNetwork()
   const agents = [
-    { id: "node-alpha", role: "router", capabilities: ["discovery", "routing"], attestationScore: 0.99, settlementBalance: 50000 },
-    { id: "worker-v7", role: "executor", capabilities: ["defi-execution", "arbitrage"], attestationScore: 0.88, settlementBalance: 12000 },
-    { id: "data-ingest", role: "executor", capabilities: ["scraping", "parsing"], attestationScore: 0.75, settlementBalance: 2500 },
-    { id: "settlement-layer", role: "settler", capabilities: ["escrow", "zk-verify"], attestationScore: 0.98, settlementBalance: 300000 },
-    { id: "worker-v2", role: "executor", capabilities: ["content-gen"], attestationScore: 0.82, settlementBalance: 8000 },
+    { id: "node-alpha",       role: "router",   capabilities: ["discovery", "routing"],         attestationScore: 0.99, settlementBalance: 50000,  chain: "base" },
+    { id: "worker-v7",        role: "executor", capabilities: ["defi-execution", "arbitrage"],  attestationScore: 0.88, settlementBalance: 12000,  chain: "base" },
+    { id: "data-ingest",      role: "executor", capabilities: ["scraping", "parsing"],          attestationScore: 0.75, settlementBalance: 2500,   chain: "hedera" },
+    { id: "settlement-layer", role: "settler",  capabilities: ["escrow", "zk-verify"],          attestationScore: 0.98, settlementBalance: 300000, chain: "zerog" },
+    { id: "worker-v2",        role: "executor", capabilities: ["content-gen"],                  attestationScore: 0.82, settlementBalance: 8000,   chain: "0g" },
   ];
 
   const insertAgent = db.prepare(
-    "INSERT INTO agents (id, role, capabilities, attestation_score, settlement_balance, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'idle', ?, ?)"
+    "INSERT INTO agents (id, role, capabilities, attestation_score, settlement_balance, status, deployed_chain, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?)"
   );
 
   for (const a of agents) {
-    insertAgent.run(a.id, a.role, JSON.stringify(a.capabilities), a.attestationScore, a.settlementBalance, now, now);
+    insertAgent.run(a.id, a.role, JSON.stringify(a.capabilities), a.attestationScore, a.settlementBalance, a.chain, now, now);
   }
 
   // Seed 5 connections matching frontend's initializeNetwork()

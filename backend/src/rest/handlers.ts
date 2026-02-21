@@ -1,8 +1,9 @@
-import { listAgents, getAgent } from "../services/agent.service.js";
+import { listAgents, getAgent, registerAgent } from "../services/agent.service.js";
 import { listConnections } from "../services/connection.service.js";
 import { computeVitals } from "../services/vitals.service.js";
 import { listActivity } from "../services/activity.service.js";
-import { listTasks, getTask } from "../services/task.service.js";
+import { listTasks, getTask, createTask, dispatchTask, completeTask } from "../services/task.service.js";
+import type { DeployedChain, AgentRole } from "../shared/types.js";
 
 type Handler = (req: Request, params: Record<string, string>) => Response | Promise<Response>;
 
@@ -13,6 +14,7 @@ const json = (data: unknown, status = 200) =>
   });
 
 export const handlers: Record<string, Handler> = {
+  // ── GET ──────────────────────────────────────────────────────────────────
   "GET /api/agents": () => json(listAgents()),
 
   "GET /api/agents/:id": (_req, params) => {
@@ -35,5 +37,119 @@ export const handlers: Record<string, Handler> = {
   "GET /api/tasks/:id": (_req, params) => {
     const task = getTask(params.id);
     return task ? json(task) : json({ error: "Task not found" }, 404);
+  },
+
+  // ── POST /api/agents ─────────────────────────────────────────────────────
+  "POST /api/agents": async (req) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const validRoles: AgentRole[] = ["router", "executor", "settler"];
+    if (!body.role || !validRoles.includes(body.role as AgentRole)) {
+      return json({ error: "role must be one of: router, executor, settler" }, 400);
+    }
+
+    // Check for duplicate id
+    if (body.id && getAgent(body.id as string)) {
+      return json({ error: "Agent already exists" }, 409);
+    }
+
+    const validChains: DeployedChain[] = ["base", "hedera", "zerog", "0g"];
+    const deployedChain: DeployedChain = validChains.includes(body.deployedChain as DeployedChain)
+      ? (body.deployedChain as DeployedChain)
+      : "base";
+
+    const capabilities = Array.isArray(body.capabilities) ? body.capabilities as string[] : [];
+
+    const agent = await registerAgent({
+      id: body.id as string | undefined,
+      role: body.role as AgentRole,
+      capabilities,
+      deployedChain,
+    });
+
+    return json(agent, 201);
+  },
+
+  // ── POST /api/tasks ──────────────────────────────────────────────────────
+  "POST /api/tasks": (req) => {
+    return (async () => {
+      let body: Record<string, unknown>;
+      try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+      if (!body.title || typeof body.title !== "string") {
+        return json({ error: "title is required" }, 400);
+      }
+      if (!body.requesterAgentId) {
+        return json({ error: "requesterAgentId is required" }, 400);
+      }
+
+      const requester = getAgent(body.requesterAgentId as string);
+      if (!requester) {
+        return json({ error: "Requester agent not found" }, 404);
+      }
+
+      const escrowAmount = typeof body.escrowAmount === "number" ? body.escrowAmount : undefined;
+      if (escrowAmount !== undefined && escrowAmount > 0 && requester.settlementBalance < escrowAmount) {
+        return json({
+          error: `Insufficient balance: has ${requester.settlementBalance}, needs ${escrowAmount}`,
+        }, 400);
+      }
+
+      const task = createTask({
+        title: body.title as string,
+        description: body.description as string | undefined,
+        requirements: Array.isArray(body.requirements) ? body.requirements as string[] : [],
+        requesterAgentId: body.requesterAgentId as string,
+        escrowAmount,
+      });
+
+      return json(task, 201);
+    })();
+  },
+
+  // ── POST /api/tasks/:id/dispatch ─────────────────────────────────────────
+  "POST /api/tasks/:id/dispatch": (req, params) => {
+    return (async () => {
+      let body: Record<string, unknown>;
+      try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+      if (!body.agentId) {
+        return json({ error: "agentId is required" }, 400);
+      }
+
+      const task = dispatchTask({ taskId: params.id, agentId: body.agentId as string });
+      if (!task) {
+        return json({ error: "Task not found, not pending, or agent not found" }, 400);
+      }
+
+      return json(task, 200);
+    })();
+  },
+
+  // ── POST /api/tasks/:id/complete ─────────────────────────────────────────
+  "POST /api/tasks/:id/complete": (req, params) => {
+    return (async () => {
+      let body: Record<string, unknown>;
+      try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+      if (body.attestationScore !== undefined) {
+        const score = body.attestationScore as number;
+        if (typeof score !== "number" || score < 0 || score > 1) {
+          return json({ error: "attestationScore must be a number between 0 and 1" }, 400);
+        }
+      }
+
+      const task = completeTask({
+        taskId: params.id,
+        result: body.result as string | undefined,
+        attestationScore: body.attestationScore as number | undefined,
+      });
+      if (!task) {
+        return json({ error: "Task not found or not in dispatched state" }, 400);
+      }
+
+      return json(task, 200);
+    })();
   },
 };

@@ -1,21 +1,26 @@
 import { create } from 'zustand';
 
 export type AgentRole = "router" | "executor" | "settler";
+export type DeployedChain = "base" | "hedera" | "zerog" | "0g";
 
 export interface AgentEntity {
     id: string;
     role: AgentRole;
     capabilities: string[];
-    attestationScore: number; // 0.0 to 1.0
+    attestationScore: number;
     settlementBalance: number;
     status: "idle" | "processing" | "dormant";
+    deployedChain?: DeployedChain;
+    inftTokenId?: string;
+    createdAt?: number;
+    updatedAt?: number;
 }
 
 export interface NetworkConnection {
     id: string;
     sourceAgentId: string;
     targetAgentId: string;
-    bandwidth: number; // 0.0 to 1.0 (thickness)
+    bandwidth: number;
     lastInteractionAt: number;
 }
 
@@ -23,7 +28,7 @@ export interface ActivityPulse {
     id: string;
     connectionId: string;
     pulseType: "task_routed" | "payment_settled" | "attestation_recorded";
-    value: number; // Value transferred
+    value: number;
 }
 
 export interface ActivityEvent {
@@ -33,20 +38,41 @@ export interface ActivityEvent {
     type: "hired" | "payment" | "trust";
 }
 
+export type TaskStatus = "pending" | "dispatched" | "completed" | "failed";
+export interface Task {
+    id: string;
+    title: string;
+    description?: string;
+    requirements: string[];
+    status: TaskStatus;
+    requesterAgentId: string;
+    assignedAgentId?: string;
+    escrowAmount?: number;
+    result?: string;
+    createdAt: number;
+    completedAt?: number;
+    chainTxHash?: string;
+}
+
+interface Vitals {
+    totalValueLocked: number;
+    systemAttestation: number;
+    activeProcesses: number;
+}
+
 interface EconomyState {
-    vitals: {
-        totalValueLocked: number;
-        systemAttestation: number;
-        activeProcesses: number;
-    };
+    vitals: Vitals;
     agents: Record<string, AgentEntity>;
     connections: Record<string, NetworkConnection>;
     activePulses: Record<string, ActivityPulse>;
     selectedAgentId: string | null;
     viewMode: 'landing' | 'explore';
     activityLog: ActivityEvent[];
+    backendAvailable: boolean;
+    lastActivityTimestamp: number;
+    tasks: Record<string, Task>;
+    actionPanelOpen: boolean;
 
-    // Actions
     initializeNetwork: () => void;
     emitPulse: (connectionId: string, pulseType: ActivityPulse["pulseType"], value: number) => void;
     removePulse: (pulseId: string) => void;
@@ -54,55 +80,105 @@ interface EconomyState {
     setViewMode: (mode: 'landing' | 'explore') => void;
     addActivityEvent: (event: Omit<ActivityEvent, 'id' | 'timestamp'>) => void;
     networkTick: () => void;
+    setActionPanelOpen: (open: boolean) => void;
+    registerAgent: (params: { id?: string; role: AgentRole; capabilities: string[]; deployedChain: DeployedChain }) => Promise<AgentEntity | null>;
+    createTask: (params: { title: string; description?: string; requirements: string[]; requesterAgentId: string; escrowAmount?: number }) => Promise<Task | null>;
+    dispatchTask: (taskId: string, agentId: string) => Promise<Task | null>;
+    completeTask: (taskId: string, result?: string, attestationScore?: number) => Promise<Task | null>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
+const fallbackAgents: Record<string, AgentEntity> = {
+    'node-alpha':       { id: 'node-alpha',       role: 'router',   capabilities: ['discovery', 'routing'],        attestationScore: 0.99, settlementBalance: 50000,  status: 'idle', deployedChain: 'base' },
+    'worker-v7':        { id: 'worker-v7',        role: 'executor', capabilities: ['defi-execution', 'arbitrage'], attestationScore: 0.88, settlementBalance: 12000,  status: 'idle', deployedChain: 'base' },
+    'data-ingest':      { id: 'data-ingest',      role: 'executor', capabilities: ['scraping', 'parsing'],         attestationScore: 0.75, settlementBalance: 2500,   status: 'idle', deployedChain: 'hedera' },
+    'settlement-layer': { id: 'settlement-layer', role: 'settler',  capabilities: ['escrow', 'zk-verify'],         attestationScore: 0.98, settlementBalance: 300000, status: 'idle', deployedChain: 'zerog' },
+    'worker-v2':        { id: 'worker-v2',        role: 'executor', capabilities: ['content-gen'],                 attestationScore: 0.82, settlementBalance: 8000,   status: 'idle', deployedChain: '0g' },
+};
+
+const fallbackConnections: Record<string, NetworkConnection> = {
+    'conn-1': { id: 'conn-1', sourceAgentId: 'node-alpha',  targetAgentId: 'worker-v7',        bandwidth: 0.8, lastInteractionAt: Date.now() },
+    'conn-2': { id: 'conn-2', sourceAgentId: 'node-alpha',  targetAgentId: 'data-ingest',      bandwidth: 0.4, lastInteractionAt: Date.now() },
+    'conn-3': { id: 'conn-3', sourceAgentId: 'worker-v7',   targetAgentId: 'settlement-layer', bandwidth: 0.9, lastInteractionAt: Date.now() },
+    'conn-4': { id: 'conn-4', sourceAgentId: 'node-alpha',  targetAgentId: 'worker-v2',        bandwidth: 0.5, lastInteractionAt: Date.now() },
+    'conn-5': { id: 'conn-5', sourceAgentId: 'data-ingest', targetAgentId: 'settlement-layer', bandwidth: 0.7, lastInteractionAt: Date.now() },
+};
+
+async function fetchJson<T>(url: string): Promise<T | null> {
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        return await res.json() as T;
+    } catch {
+        return null;
+    }
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) return null;
+        return await res.json() as T;
+    } catch {
+        return null;
+    }
+}
+
 export const useEconomyStore = create<EconomyState>((set, get) => ({
-    vitals: {
-        totalValueLocked: 1250000,
-        systemAttestation: 0.92,
-        activeProcesses: 0,
-    },
+    vitals: { totalValueLocked: 1250000, systemAttestation: 0.92, activeProcesses: 0 },
     agents: {},
     connections: {},
     activePulses: {},
     selectedAgentId: null,
     viewMode: 'landing',
     activityLog: [],
+    backendAvailable: false,
+    lastActivityTimestamp: 0,
+    tasks: {},
+    actionPanelOpen: false,
 
-    initializeNetwork: () => {
-        // Scaffold initial infrastructure agents
-        const initialAgents: Record<string, AgentEntity> = {
-            'node-alpha': { id: 'node-alpha', role: 'router', capabilities: ['discovery', 'routing'], attestationScore: 0.99, settlementBalance: 50000, status: 'idle' },
-            'worker-v7': { id: 'worker-v7', role: 'executor', capabilities: ['defi-execution', 'arbitrage'], attestationScore: 0.88, settlementBalance: 12000, status: 'idle' },
-            'data-ingest': { id: 'data-ingest', role: 'executor', capabilities: ['scraping', 'parsing'], attestationScore: 0.75, settlementBalance: 2500, status: 'idle' },
-            'settlement-layer': { id: 'settlement-layer', role: 'settler', capabilities: ['escrow', 'zk-verify'], attestationScore: 0.98, settlementBalance: 300000, status: 'idle' },
-            'worker-v2': { id: 'worker-v2', role: 'executor', capabilities: ['content-gen'], attestationScore: 0.82, settlementBalance: 8000, status: 'idle' }
-        };
+    initializeNetwork: async () => {
+        const [agents, connections, vitals, activity, tasks] = await Promise.all([
+            fetchJson<AgentEntity[]>('/api/agents'),
+            fetchJson<NetworkConnection[]>('/api/connections'),
+            fetchJson<Vitals>('/api/vitals'),
+            fetchJson<ActivityEvent[]>('/api/activity?limit=50'),
+            fetchJson<Task[]>('/api/tasks'),
+        ]);
 
-        const initialConnections: Record<string, NetworkConnection> = {
-            'conn-1': { id: 'conn-1', sourceAgentId: 'node-alpha', targetAgentId: 'worker-v7', bandwidth: 0.8, lastInteractionAt: Date.now() },
-            'conn-2': { id: 'conn-2', sourceAgentId: 'node-alpha', targetAgentId: 'data-ingest', bandwidth: 0.4, lastInteractionAt: Date.now() },
-            'conn-3': { id: 'conn-3', sourceAgentId: 'worker-v7', targetAgentId: 'settlement-layer', bandwidth: 0.9, lastInteractionAt: Date.now() },
-            'conn-4': { id: 'conn-4', sourceAgentId: 'node-alpha', targetAgentId: 'worker-v2', bandwidth: 0.5, lastInteractionAt: Date.now() },
-            'conn-5': { id: 'conn-5', sourceAgentId: 'data-ingest', targetAgentId: 'settlement-layer', bandwidth: 0.7, lastInteractionAt: Date.now() },
-        };
+        if (agents && connections) {
+            const agentMap: Record<string, AgentEntity> = {};
+            for (const a of agents) agentMap[a.id] = a;
+            const connMap: Record<string, NetworkConnection> = {};
+            for (const c of connections) connMap[c.id] = c;
+            const taskMap: Record<string, Task> = {};
+            for (const t of (tasks ?? [])) taskMap[t.id] = t;
 
-        set({ agents: initialAgents, connections: initialConnections });
+            set({
+                agents: agentMap,
+                connections: connMap,
+                tasks: taskMap,
+                vitals: vitals ?? { totalValueLocked: 1250000, systemAttestation: 0.92, activeProcesses: 0 },
+                activityLog: activity ?? [],
+                backendAvailable: true,
+                lastActivityTimestamp: activity && activity.length > 0 ? activity[0].timestamp : 0,
+            });
+        } else {
+            set({ agents: fallbackAgents, connections: fallbackConnections, backendAvailable: false });
+        }
     },
 
     emitPulse: (connectionId, pulseType, value) => {
         const pulseId = `pulse-${generateId()}`;
         const pulse: ActivityPulse = { id: pulseId, connectionId, pulseType, value };
-
-        set((state) => ({
-            activePulses: { ...state.activePulses, [pulseId]: pulse }
-        }));
-
-        setTimeout(() => {
-            get().removePulse(pulseId);
-        }, 1500); // Faster, more mechanical pulse duration
+        set((state) => ({ activePulses: { ...state.activePulses, [pulseId]: pulse } }));
+        // 2600ms — 100ms longer than the 2.5s animation so the packet finishes before removal
+        setTimeout(() => get().removePulse(pulseId), 2600);
     },
 
     removePulse: (pulseId) => {
@@ -115,48 +191,116 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
 
     setSelectedAgent: (id) => set({ selectedAgentId: id }),
     setViewMode: (mode) => set({ viewMode: mode }),
+    setActionPanelOpen: (open) => set({ actionPanelOpen: open }),
 
     addActivityEvent: (event) => {
         set((state) => ({
             activityLog: [
                 { ...event, id: `evt-${generateId()}`, timestamp: Date.now() },
-                ...state.activityLog
-            ].slice(0, 50)
+                ...state.activityLog,
+            ].slice(0, 50),
         }));
     },
 
-    networkTick: () => {
-        const { connections, emitPulse, addActivityEvent, agents } = get();
-        const connectionKeys = Object.keys(connections);
-        if (connectionKeys.length === 0) return;
+    registerAgent: async (params) => {
+        const agent = await postJson<AgentEntity>('/api/agents', params);
+        if (!agent) return null;
+        set((state) => ({ agents: { ...state.agents, [agent.id]: agent } }));
+        return agent;
+    },
 
-        if (Math.random() < 0.15) {
-            const randomConnId = connectionKeys[Math.floor(Math.random() * connectionKeys.length)];
-            const connection = connections[randomConnId];
-            const source = agents[connection.sourceAgentId];
-            const target = agents[connection.targetAgentId];
+    createTask: async (params) => {
+        const task = await postJson<Task>('/api/tasks', params);
+        if (!task) return null;
+        set((state) => ({ tasks: { ...state.tasks, [task.id]: task } }));
+        return task;
+    },
 
-            const types: ActivityPulse["pulseType"][] = ['task_routed', 'payment_settled', 'attestation_recorded'];
-            const randomType = types[Math.floor(Math.random() * types.length)];
-            const randomValue = Math.floor(Math.random() * 5000) + 100;
+    dispatchTask: async (taskId, agentId) => {
+        const task = await postJson<Task>(`/api/tasks/${taskId}/dispatch`, { agentId });
+        if (!task) return null;
+        set((state) => ({ tasks: { ...state.tasks, [task.id]: task } }));
+        return task;
+    },
 
-            emitPulse(randomConnId, randomType, randomValue);
+    completeTask: async (taskId, result, attestationScore) => {
+        const task = await postJson<Task>(`/api/tasks/${taskId}/complete`, { result, attestationScore });
+        if (!task) return null;
+        set((state) => ({ tasks: { ...state.tasks, [task.id]: task } }));
+        return task;
+    },
 
-            let message = "";
-            let eventType: ActivityEvent["type"] = "payment";
+    networkTick: async () => {
+        const { backendAvailable, connections, emitPulse, addActivityEvent, agents, lastActivityTimestamp } = get();
 
-            if (randomType === 'task_routed') {
-                message = `[ROUTING] Task dispatched: ${source.id} → ${target.id}`;
-                eventType = "hired";
-            } else if (randomType === 'payment_settled') {
-                message = `[SETTLEMENT] ${randomValue} USDC settled: ${source.id} → ${target.id}`;
-                eventType = "payment";
-            } else {
-                message = `[ATTEST] Trust attestation logged between ${source.id} & ${target.id}`;
-                eventType = "trust";
+        if (backendAvailable) {
+            const [agentsData, vitals, activity, tasksData] = await Promise.all([
+                fetchJson<AgentEntity[]>('/api/agents'),
+                fetchJson<Vitals>('/api/vitals'),
+                fetchJson<ActivityEvent[]>('/api/activity?limit=50'),
+                fetchJson<Task[]>('/api/tasks'),
+            ]);
+
+            if (agentsData) {
+                const agentMap: Record<string, AgentEntity> = {};
+                for (const a of agentsData) agentMap[a.id] = a;
+                set({ agents: agentMap });
             }
-
-            addActivityEvent({ message, type: eventType });
+            if (vitals) set({ vitals });
+            if (tasksData) {
+                const taskMap: Record<string, Task> = {};
+                for (const t of tasksData) taskMap[t.id] = t;
+                set({ tasks: taskMap });
+            }
+            if (activity && activity.length > 0) {
+                const newEvents = activity.filter(e => e.timestamp > lastActivityTimestamp);
+                if (newEvents.length > 0) {
+                    set({ activityLog: activity, lastActivityTimestamp: activity[0].timestamp });
+                    const connectionKeys = Object.keys(get().connections);
+                    for (const evt of newEvents) {
+                        if (connectionKeys.length > 0) {
+                            const randomConnId = connectionKeys[Math.floor(Math.random() * connectionKeys.length)];
+                            const pulseType = evt.type === 'hired' ? 'task_routed'
+                                : evt.type === 'payment' ? 'payment_settled'
+                                : 'attestation_recorded';
+                            emitPulse(randomConnId, pulseType, 1000);
+                        }
+                    }
+                }
+            }
+            const connectionsData = await fetchJson<NetworkConnection[]>('/api/connections');
+            if (connectionsData) {
+                const connMap: Record<string, NetworkConnection> = {};
+                for (const c of connectionsData) connMap[c.id] = c;
+                set({ connections: connMap });
+            }
+        } else {
+            // Offline simulation
+            const connectionKeys = Object.keys(connections);
+            if (connectionKeys.length === 0) return;
+            if (Math.random() < 0.15) {
+                const randomConnId = connectionKeys[Math.floor(Math.random() * connectionKeys.length)];
+                const connection = connections[randomConnId];
+                const source = agents[connection.sourceAgentId];
+                const target = agents[connection.targetAgentId];
+                const types: ActivityPulse["pulseType"][] = ['task_routed', 'payment_settled', 'attestation_recorded'];
+                const randomType = types[Math.floor(Math.random() * types.length)];
+                const randomValue = Math.floor(Math.random() * 5000) + 100;
+                emitPulse(randomConnId, randomType, randomValue);
+                let message = "";
+                let eventType: ActivityEvent["type"] = "payment";
+                if (randomType === 'task_routed') {
+                    message = `[ROUTING] Task dispatched: ${source.id} → ${target.id}`;
+                    eventType = "hired";
+                } else if (randomType === 'payment_settled') {
+                    message = `[SETTLEMENT] ${randomValue} USDC settled: ${source.id} → ${target.id}`;
+                    eventType = "payment";
+                } else {
+                    message = `[ATTEST] Trust attestation logged between ${source.id} & ${target.id}`;
+                    eventType = "trust";
+                }
+                addActivityEvent({ message, type: eventType });
+            }
         }
-    }
+    },
 }));

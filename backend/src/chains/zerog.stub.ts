@@ -1,35 +1,51 @@
-// TODO: Replace with real 0G (Zero Gravity) integration
-// - iNFT minting for agent identity tokens
-// - AI inference ranking for agent quality assessment
-// SDK: TBD (0G SDK)
+/**
+ * 0G Chain — simulated INFT minting
+ *
+ * Generates realistic-looking on-chain responses without hitting any network.
+ * When the 0G testnet is stable, swap mintAgentNFT for the real ethers.js call.
+ */
 
 import type { NFTService, InferenceService } from "./types.js";
 
-const generateTxHash = () => `0g-${Math.random().toString(36).substring(2, 15)}`;
+let _tokenCounter = 1;
+
+function fakeAddress(): string {
+  return "0x" + Array.from({ length: 40 }, () =>
+    Math.floor(Math.random() * 16).toString(16)
+  ).join("");
+}
+
+function fakeTxHash(): string {
+  return "0x" + Array.from({ length: 64 }, () =>
+    Math.floor(Math.random() * 16).toString(16)
+  ).join("");
+}
+
+function delay(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
+}
 
 export const zerogNFT: NFTService = {
   async mintAgentNFT(params) {
-    // TODO: Use 0G iNFT to mint identity NFT for agent
-    // const client = new ZeroGClient({ endpoint: process.env.ZEROG_ENDPOINT });
-    // const result = await client.inft.mint({
-    //   owner: params.agentId,
-    //   metadata: params.metadata,
-    // });
-    const tokenId = `inft-${Math.random().toString(36).substring(2, 9)}`;
-    console.log(`[0g-stub] mintAgentNFT: minting iNFT ${tokenId} for agent ${params.agentId}`);
-    return { tokenId, txHash: generateTxHash() };
+    // Simulate network round-trip
+    await delay(180 + Math.random() * 120);
+
+    const tokenId = _tokenCounter++;
+    const txHash  = fakeTxHash();
+    const owner   = fakeAddress();
+
+    console.log(
+      `[0g] AgentNFT minted (simulated) — ` +
+      `agent=${params.agentId} tokenId=${tokenId} owner=${owner} tx=${txHash}`
+    );
+
+    return { tokenId: String(tokenId), txHash };
   },
 };
 
 export const zerogInference: InferenceService = {
   async rankAgents(params) {
-    // TODO: Use 0G AI inference to rank agents based on criteria
-    // const client = new ZeroGClient({ endpoint: process.env.ZEROG_ENDPOINT });
-    // const result = await client.inference.rank({
-    //   agentIds: params.agentIds,
-    //   criteria: params.criteria,
-    // });
-    console.log(`[0g-stub] rankAgents: ranking ${params.agentIds.length} agents by "${params.criteria}"`);
+    await delay(80);
     const rankings = params.agentIds.map((agentId, i) => ({
       agentId,
       score: Math.round((1 - i * 0.1) * 100) / 100,
