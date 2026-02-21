@@ -271,7 +271,7 @@ contract Conduit {
         address agent;
         bytes32 name;
         uint256 price;
-        uint256 reputation;
+        int256 reputation;
         uint256 abilities;
         Chain chain;
         bool exists;
@@ -285,9 +285,11 @@ contract Conduit {
         uint256 amount;
         bytes32 attestation;
         uint256 expiry;
+        int8 rating;
         bool accepted;
         bool rejected;
         bool completed;
+        bool rated;
         string prompt;
     }
 
@@ -306,6 +308,8 @@ contract Conduit {
     event JobRejected(uint256 indexed id);
     event JobCompleted(uint256 indexed id, bytes32 attestation);
     event JobRefunded(uint256 indexed id);
+    event JobRated(uint256 indexed id, int8 rating);
+    event ReputationUpdated(address indexed agent, int256 reputation);
 
     uint256 counter = 0;
 
@@ -435,9 +439,11 @@ contract Conduit {
         job.amount = amount;
         job.attestation = bytes32(0);
         job.expiry = block.timestamp + 300;
+        job.rating = 0;
         job.accepted = false;
         job.rejected = false;
         job.completed = false;
+        job.rated = false;
         job.prompt = prompt;
         agentJobs[agent_].push(counter);
         counter++;
@@ -488,6 +494,23 @@ contract Conduit {
         emit JobCompleted(id, attestation);
         (bool ok,) = payable(msg.sender).call{value: job.amount}("");
         require(ok, "Failed to issue payment to agent");
+    }
+
+    function rateJob(uint256 id, int8 rating) public {
+        require(rating >= -10 && rating <= 10, "Invalid rating");
+        require(id < counter, "Invalid job");
+        Job storage job = jobs[id];
+        require(msg.sender == job.renter, "Renter does not have access to this job");
+        require(msg.sender != job.agent, "Agent cannot rate this job");
+        require(job.completed, "Job not completed");
+        require(!job.rated, "Job already rated");
+        job.rated = true;
+        job.rating = rating;
+        Agent storage agent = agents[job.agent];
+        require(agent.exists, "Agent deregistered");
+        agent.reputation += int256(rating) * int256(job.amount);
+        emit JobRated(id, rating);
+        emit ReputationUpdated(job.agent, agent.reputation);
     }
 
     function refundJob(uint256 id) public {
