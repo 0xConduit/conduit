@@ -287,6 +287,15 @@ contract Conduit {
     mapping(address => Agent) public agents;
     mapping(uint256 => Job) public jobs;
 
+    event AgentRegistered(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
+    event AgentUpdated(address indexed agent, bytes32 name, Chain chain, uint256 price, uint256 abilities);
+    event AgentDeregistered(address indexed agent);
+    event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount);
+    event JobAccepted(uint256 indexed id);
+    event JobRejected(uint256 indexed id);
+    event JobCompleted(uint256 indexed id);
+    event JobRefunded(uint256 indexed id);
+
     uint256 counter = 0;
 
     function _bit(Ability ability) internal pure returns (uint256) {
@@ -333,6 +342,7 @@ contract Conduit {
         agent.price = price;
         agent.reputation = 0;
         agent.abilities = abilities;
+        emit AgentRegistered(msg.sender, name, chain, price, abilities);
     }
 
     function updateName(bytes32 name) public {
@@ -340,55 +350,65 @@ contract Conduit {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         agent.name = name;
+        emit AgentUpdated(msg.sender, name, agent.chain, agent.price, agent.abilities);
     }
 
     function updateChain(Chain chain) public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         agent.chain = chain;
+        emit AgentUpdated(msg.sender, agent.name, chain, agent.price, agent.abilities);
     }
 
     function updatePrice(uint256 price) public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         agent.price = price;
+        emit AgentUpdated(msg.sender, agent.name, agent.chain, price, agent.abilities);
     }
 
     function updateAbilities(uint256 abilities) public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         agent.abilities = abilities;
+        emit AgentUpdated(msg.sender, agent.name, agent.chain, agent.price, abilities);
     }
 
     function addAbility(Ability ability) public {
-        require(agents[msg.sender].exists, "Agent is not registered");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
         _addAbility(msg.sender, ability);
+        emit AgentUpdated(msg.sender, agent.name, agent.chain, agent.price, agent.abilities);
     }
 
     function removeAbility(Ability ability) public {
-        require(agents[msg.sender].exists, "Agent is not registered");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
         _removeAbility(msg.sender, ability);
+        emit AgentUpdated(msg.sender, agent.name, agent.chain, agent.price, agent.abilities);
     }
 
     function deregister() public {
         Agent storage agent = agents[msg.sender];
         require(agent.exists, "Agent is not registered");
         delete agents[msg.sender];
+        emit AgentDeregistered(msg.sender);
     }
 
-    function rentAgent(address id, uint256 mins) public payable returns (uint256) {
-        Agent storage agent = agents[id];
+    function rentAgent(address agent_, uint256 mins) public payable returns (uint256) {
+        Agent storage agent = agents[agent_];
         require(agent.exists, "Agent is not registered");
         uint256 amount = agent.price * mins;
         require(msg.value >= amount, "Insufficient funds");
         Job storage job = jobs[counter];
-        job.agent = id;
+        job.agent = agent_;
         job.renter = msg.sender;
         job.amount = amount;
         job.accepted = false;
         job.rejected = false;
         job.completed = false;
         counter++;
+        emit JobCreated(counter - 1, agent_, msg.sender, mins, amount);
         uint256 refund = msg.value - amount;
         if (refund > 0) {
             (bool ok,) = payable(msg.sender).call{value: refund}("");
@@ -405,6 +425,7 @@ contract Conduit {
         require(!job.rejected, "Job already rejected");
         require(!job.completed, "Job already completed");
         job.accepted = true;
+        emit JobAccepted(id);
     }
 
     function rejectJob(uint256 id) public {
@@ -417,6 +438,7 @@ contract Conduit {
         job.rejected = true;
         (bool ok,) = payable(job.renter).call{value: job.amount}("");
         require(ok, "Failed to refund payment to renter");
+        emit JobRejected(id);
     }
 
     function completeJob(uint256 id) public {
@@ -429,6 +451,7 @@ contract Conduit {
         job.completed = true;
         (bool ok,) = payable(msg.sender).call{value: job.amount}("");
         require(ok, "Failed to issue payment to agent");
+        emit JobCompleted(id);
     }
 
     function refundJob(uint256 id) public {
@@ -443,5 +466,6 @@ contract Conduit {
         job.rejected = true;
         (bool ok,) = payable(job.renter).call{value: job.amount}("");
         require(ok, "Failed to refund payment to renter");
+        emit JobRefunded(id);
     }
 }
