@@ -916,7 +916,7 @@ export default function ActionPanel() {
         <>
             <button
                 onClick={() => setActionPanelOpen(!actionPanelOpen)}
-                className="fixed bottom-16 left-5 z-50 px-3 py-2 rounded-full bg-white/10 border border-white/10 text-white/70 text-xs font-medium backdrop-blur-md hover:bg-white/20 hover:text-white transition-colors"
+                className="fixed bottom-16 right-5 z-50 px-3 py-2 rounded-full bg-white/10 border border-white/10 text-white/70 text-xs font-medium backdrop-blur-md hover:bg-white/20 hover:text-white transition-colors"
             >
                 {actionPanelOpen ? '✕ Close' : '⊕ Control Panel'}
             </button>
@@ -924,11 +924,11 @@ export default function ActionPanel() {
             <AnimatePresence>
                 {actionPanelOpen && (
                     <motion.div
-                        initial={{ opacity: 0, x: -20 }}
+                        initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
+                        exit={{ opacity: 0, x: 20 }}
                         transition={{ duration: 0.18 }}
-                        className="fixed bottom-28 left-5 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                        className="fixed bottom-28 right-5 z-40 w-80 max-h-[calc(100vh-10rem)] flex flex-col bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/10 shrink-0">
