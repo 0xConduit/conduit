@@ -306,7 +306,9 @@ contract Conduit {
     event AgentPaused(address indexed agent);
     event AgentUnpaused(address indexed agent);
     event AgentDeregistered(address indexed agent);
-    event JobCreated(uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount, uint256 expiry);
+    event JobCreated(
+        uint256 indexed id, address indexed agent, address indexed renter, uint256 mins, uint256 amount, uint256 expiry
+    );
     event JobAccepted(uint256 indexed id, uint256 expiry);
     event JobRejected(uint256 indexed id);
     event JobCompleted(uint256 indexed id, bytes32 attestation);
@@ -550,7 +552,7 @@ contract Conduit {
         require(!agent.exists || block.timestamp >= job.expiry, "Job is not refundable yet");
         job.accepted = false;
         job.rejected = true;
-        if(agent.exists) {
+        if (agent.exists) {
             job.rated = true;
             job.rating = -10;
             agent.reputation += -10 * int256(job.amount);
@@ -574,7 +576,7 @@ contract Conduit {
         uint256 total = 0;
         for (uint256 i = 0; i < agentList.length; i++) {
             Agent storage agent = agents[agentList[i]];
-            if(!agent.paused) {
+            if (!agent.paused) {
                 total++;
             }
         }
@@ -582,7 +584,7 @@ contract Conduit {
         uint256 j = 0;
         for (uint256 i = 0; i < agentList.length; i++) {
             Agent storage agent = agents[agentList[i]];
-            if(!agent.paused) {
+            if (!agent.paused) {
                 out[j] = agent;
                 j++;
             }
