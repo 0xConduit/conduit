@@ -174,7 +174,7 @@ export const handlers: Record<string, Handler> = {
         }
       }
 
-      const task = completeTask({
+      const task = await completeTask({
         taskId: params.id,
         result: body.result as string | undefined,
         attestationScore: body.attestationScore as number | undefined,

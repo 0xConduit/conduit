@@ -116,11 +116,11 @@ export function dispatchTask(params: {
   return getTask(params.taskId);
 }
 
-export function completeTask(params: {
+export async function completeTask(params: {
   taskId: string;
   result?: string;
   attestationScore?: number;
-}): Task | null {
+}): Promise<Task | null> {
   const db = getDb();
   const task = getTask(params.taskId);
   if (!task || task.status !== "dispatched" || !task.assignedAgentId) return null;
@@ -154,14 +154,14 @@ export function completeTask(params: {
     });
   }
 
-  // Release escrow if exists
+  // Release escrow if exists (this will trigger Base revenue settlement)
   const escrow = getEscrowByTaskId(params.taskId);
   if (escrow && escrow.status === "locked") {
-    releaseEscrow(escrow.id);
+    await releaseEscrow(escrow.id);
 
     const conn = findConnection(task.requesterAgentId, task.assignedAgentId);
     recordActivity({
-      message: `[SETTLEMENT] ${escrow.amount} USDC settled: ${task.requesterAgentId} → ${task.assignedAgentId}`,
+      message: `[SETTLEMENT] ${escrow.amount} USDC settled: ${task.requesterAgentId} → ${task.assignedAgentId}${escrow.chainTxHash ? ` (Base tx: ${escrow.chainTxHash})` : ""}`,
       type: "payment",
       connectionId: conn?.id,
       taskId: params.taskId,

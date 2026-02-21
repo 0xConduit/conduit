@@ -60,7 +60,7 @@ export function registerTaskTools(server: McpServer) {
       attestationScore: z.number().min(0).max(1).optional().describe("Quality score (0.0-1.0) to attest for the assigned agent"),
     },
     async (params) => {
-      const task = completeTask({
+      const task = await completeTask({
         taskId: params.taskId,
         result: params.result,
         attestationScore: params.attestationScore,

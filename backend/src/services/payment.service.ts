@@ -2,6 +2,8 @@ import { getDb } from "../db/connection.js";
 import type { Escrow } from "../shared/types.js";
 import { updateAgentBalance } from "./agent.service.js";
 import { hederaEscrow } from "../chains/hedera.stub.js";
+import { baseRevenue } from "../chains/base.stub.js";
+import { getAgent } from "./agent.service.js";
 
 function rowToEscrow(row: Record<string, unknown>): Escrow {
   return {
@@ -54,7 +56,7 @@ export function getEscrowByTaskId(taskId: string): Escrow | null {
   return row ? rowToEscrow(row) : null;
 }
 
-export function releaseEscrow(escrowId: string): Escrow | null {
+export async function releaseEscrow(escrowId: string): Promise<Escrow | null> {
   const db = getDb();
   const escrow = getEscrow(escrowId);
   if (!escrow || escrow.status !== "locked") return null;
@@ -66,7 +68,32 @@ export function releaseEscrow(escrowId: string): Escrow | null {
     updateAgentBalance(escrow.payeeAgentId, escrow.amount);
   }
 
+  // Release on Hedera (for escrow tracking)
   hederaEscrow.releaseFunds({ escrowId: escrowId, payeeAgentId: escrow.payeeAgentId!, amount: escrow.amount });
+
+  // Settle revenue on Base mainnet with ERC-8021 builder codes
+  if (escrow.payeeAgentId) {
+    try {
+      const agent = getAgent(escrow.payeeAgentId);
+      if (agent && agent.deployedChain === "base") {
+        const builderCode = process.env.BASE_BUILDER_CODE;
+        const settlementResult = await baseRevenue.settleRevenue({
+          agentId: escrow.payeeAgentId,
+          amount: escrow.amount,
+          builderCode,
+        });
+        
+        // Update escrow with Base transaction hash
+        db.prepare("UPDATE escrows SET chain_tx_hash = ?, chain = 'base' WHERE id = ?")
+          .run(settlementResult.txHash, escrowId);
+        
+        console.log(`[payment] Revenue settled on Base: ${settlementResult.txHash} for agent ${escrow.payeeAgentId}`);
+      }
+    } catch (err: any) {
+      console.error(`[payment] Base revenue settlement failed for escrow ${escrowId}:`, err?.message);
+      // Continue with escrow release even if Base settlement fails
+    }
+  }
 
   db.prepare("UPDATE escrows SET status = 'released', settled_at = ? WHERE id = ?").run(now, escrowId);
   return getEscrow(escrowId);
