@@ -267,18 +267,20 @@ contract Conduit {
     }
 
     struct Agent {
-        bool exists;
         bytes32 name;
-        Chain chain;
         uint256 price;
         uint256 reputation;
         uint256 abilities;
+        Chain chain;
+        bool exists;
     }
 
     mapping(address => Agent) public agents;
 
     function _bit(Ability ability) internal pure returns (uint256) {
-        return 1 << uint256(ability);
+        uint256 a = uint256(ability);
+        require(a < 256, "Invalid ability");
+        return 1 << a;
     }
 
     function _addAbility(address agent, Ability ability) internal {
@@ -307,5 +309,58 @@ contract Conduit {
 
     function _hasAnyAbilities(address agent, uint256 mask) internal view returns (bool) {
         return (agents[agent].abilities & mask) != 0;
+    }
+
+    function register(bytes32 name, Chain chain, uint256 price, uint256 abilities) public {
+        require(name != bytes32(0), "Invalid name");
+        Agent storage agent = agents[msg.sender];
+        require(!agent.exists, "Agent is already registered");
+        agent.exists = true;
+        agent.name = name;
+        agent.chain = chain;
+        agent.price = price;
+        agent.reputation = 0;
+        agent.abilities = abilities;
+    }
+
+    function updateName(bytes32 name) public {
+        require(name != bytes32(0), "Invalid name");
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        agent.name = name;
+    }
+
+    function updateChain(Chain chain) public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        agent.chain = chain;
+    }
+
+    function updatePrice(uint256 price) public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        agent.price = price;
+    }
+
+    function updateAbilities(uint256 abilities) public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        agent.abilities = abilities;
+    }
+
+    function addAbility(Ability ability) public {
+        require(agents[msg.sender].exists, "Agent is not registered");
+        _addAbility(msg.sender, ability);
+    }
+
+    function removeAbility(Ability ability) public {
+        require(agents[msg.sender].exists, "Agent is not registered");
+        _removeAbility(msg.sender, ability);
+    }
+
+    function deregister() public {
+        Agent storage agent = agents[msg.sender];
+        require(agent.exists, "Agent is not registered");
+        delete agents[msg.sender];
     }
 }
