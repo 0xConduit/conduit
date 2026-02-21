@@ -10,12 +10,14 @@ export default function EntityInspector() {
     const agent = selectedAgentId ? agents[selectedAgentId] : null;
 
     return (
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
             {agent && (
                 <motion.div
+                    key={agent.id}
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.12 }}
                     className="absolute top-6 right-6 z-10 w-80 font-mono"
                 >
                     <div className="bg-[#0a0a0c] border border-white/10 p-5 shadow-2xl relative">

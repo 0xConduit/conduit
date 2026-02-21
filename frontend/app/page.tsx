@@ -14,7 +14,6 @@ import { useEffect } from 'react';
 export default function Home() {
     const viewMode = useEconomyStore(state => state.viewMode);
 
-    // Lock body scroll when in explore mode so we don't accidentally scroll the canvas out of view
     useEffect(() => {
         if (viewMode === 'explore') {
             document.body.style.overflow = 'hidden';
@@ -25,18 +24,15 @@ export default function Home() {
 
     return (
         <main className={`relative w-full min-h-screen bg-[#0a0a0c] text-white font-mono ${viewMode === 'explore' ? 'overflow-hidden' : ''}`}>
-
-            {/* The Live Background Canvas is always running behind the scroll content */}
             <div className="fixed inset-0 z-0">
                 <LivingCanvas />
             </div>
 
-            {/* Landing Scrollable Viewport */}
+            {/* Landing page */}
             <AnimatePresence>
                 {viewMode === 'landing' && <LandingOverlay />}
             </AnimatePresence>
 
-            {/* HUD / Observability Layers (Pinned via fixed/absolute) */}
             <AnimatePresence>
                 {viewMode === 'landing' && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
@@ -45,6 +41,7 @@ export default function Home() {
                 )}
             </AnimatePresence>
 
+            {/* Observe Economy mode (unauthenticated explore) */}
             <AnimatePresence>
                 {viewMode === 'explore' && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
