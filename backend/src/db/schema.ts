@@ -12,8 +12,34 @@ export function initSchema(): void {
     status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle', 'processing', 'dormant')),
     deployed_chain TEXT NOT NULL DEFAULT 'base',
     inft_token_id TEXT,
+    wallet_address TEXT,
+    encrypted_private_key TEXT,
+    conduit_registered INTEGER NOT NULL DEFAULT 0,
+    conduit_tx_hash TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
+  )`);
+
+  // Migrations for existing DBs — add wallet/conduit columns if missing
+  const walletMigrations = [
+    "ALTER TABLE agents ADD COLUMN wallet_address TEXT",
+    "ALTER TABLE agents ADD COLUMN encrypted_private_key TEXT",
+    "ALTER TABLE agents ADD COLUMN conduit_registered INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE agents ADD COLUMN conduit_tx_hash TEXT",
+  ];
+  for (const sql of walletMigrations) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
+
+  db.exec(`CREATE TABLE IF NOT EXISTS contract_txns (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    tx_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'confirmed', 'failed')),
+    params TEXT,
+    error TEXT,
+    created_at INTEGER NOT NULL
   )`);
 
   db.exec(`CREATE TABLE IF NOT EXISTS connections (

@@ -12,6 +12,9 @@ export interface AgentEntity {
     status: "idle" | "processing" | "dormant";
     deployedChain?: DeployedChain;
     inftTokenId?: string;
+    walletAddress?: string;
+    conduitRegistered?: boolean;
+    conduitTxHash?: string;
     createdAt?: number;
     updatedAt?: number;
 }
@@ -81,10 +84,24 @@ interface EconomyState {
     addActivityEvent: (event: Omit<ActivityEvent, 'id' | 'timestamp'>) => void;
     networkTick: () => void;
     setActionPanelOpen: (open: boolean) => void;
-    registerAgent: (params: { id?: string; role: AgentRole; capabilities: string[]; deployedChain: DeployedChain }) => Promise<AgentEntity | null>;
+    registerAgent: (params: { id?: string; role: AgentRole; capabilities: string[]; deployedChain: DeployedChain; conduitName?: string; conduitPrice?: string; conduitAbilities?: string }) => Promise<AgentEntity | null>;
     createTask: (params: { title: string; description?: string; requirements: string[]; requesterAgentId: string; escrowAmount?: number }) => Promise<Task | null>;
     dispatchTask: (taskId: string, agentId: string) => Promise<Task | null>;
     completeTask: (taskId: string, result?: string, attestationScore?: number) => Promise<Task | null>;
+
+    // Contract operations
+    contractRegister: (agentId: string, params: { name: string; chain?: string; pricePerMinute?: string; abilitiesMask?: string }) => Promise<{ txHash: string } | null>;
+    contractDeregister: (agentId: string) => Promise<{ txHash: string } | null>;
+    contractUpdate: (agentId: string, params: { name?: string; chain?: string; pricePerMinute?: string; abilitiesMask?: string }) => Promise<{ updates: { field: string; txHash: string }[] } | null>;
+    contractRentAgent: (agentId: string, params: { targetAgentId: string; minutes: number; valueEth: string }) => Promise<{ txHash: string; jobId?: string } | null>;
+    contractAcceptJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
+    contractRejectJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
+    contractCompleteJob: (agentId: string, jobId: number, attestation: string) => Promise<{ txHash: string } | null>;
+    contractRefundJob: (agentId: string, jobId: number) => Promise<{ txHash: string } | null>;
+    contractCreateTask: (agentId: string, params: { assigneeAgentId: string; paymentEth: string }) => Promise<{ txHash: string; taskId?: string } | null>;
+    contractCompleteTask: (agentId: string, taskId: number, reputationDelta: number) => Promise<{ txHash: string } | null>;
+    contractGetOnChainState: (agentId: string) => Promise<Record<string, unknown> | null>;
+    fundAgent: (agentId: string, amountEth?: string) => Promise<{ txHash: string } | null>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -228,6 +245,55 @@ export const useEconomyStore = create<EconomyState>((set, get) => ({
         if (!task) return null;
         set((state) => ({ tasks: { ...state.tasks, [task.id]: task } }));
         return task;
+    },
+
+    // ── Contract operations ──────────────────────────────────────────────────
+    contractRegister: async (agentId, params) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/register`, params);
+    },
+
+    contractDeregister: async (agentId) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/deregister`, {});
+    },
+
+    contractUpdate: async (agentId, params) => {
+        return postJson<{ updates: { field: string; txHash: string }[] }>(`/api/agents/${agentId}/contract/update`, params);
+    },
+
+    contractRentAgent: async (agentId, params) => {
+        return postJson<{ txHash: string; jobId?: string }>(`/api/agents/${agentId}/contract/rent`, params);
+    },
+
+    contractAcceptJob: async (agentId, jobId) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/accept-job`, { jobId });
+    },
+
+    contractRejectJob: async (agentId, jobId) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/reject-job`, { jobId });
+    },
+
+    contractCompleteJob: async (agentId, jobId, attestation) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/complete-job`, { jobId, attestation });
+    },
+
+    contractRefundJob: async (agentId, jobId) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/refund-job`, { jobId });
+    },
+
+    contractCreateTask: async (agentId, params) => {
+        return postJson<{ txHash: string; taskId?: string }>(`/api/agents/${agentId}/contract/create-task`, params);
+    },
+
+    contractCompleteTask: async (agentId, taskId, reputationDelta) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/contract/complete-task`, { taskId, reputationDelta });
+    },
+
+    contractGetOnChainState: async (agentId) => {
+        return fetchJson<Record<string, unknown>>(`/api/agents/${agentId}/contract`);
+    },
+
+    fundAgent: async (agentId, amountEth) => {
+        return postJson<{ txHash: string }>(`/api/agents/${agentId}/fund`, amountEth ? { amountEth } : {});
     },
 
     networkTick: async () => {

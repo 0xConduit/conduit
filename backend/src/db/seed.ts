@@ -1,11 +1,36 @@
 import { getDb } from "./connection.js";
 import { initSchema } from "./schema.js";
+import { generateAgentWallet } from "../services/wallet.service.js";
 
 export function seedDatabase(): void {
   initSchema();
   const db = getDb();
 
   const now = Date.now();
+
+  // Backfill wallets for existing agents that don't have one
+  try {
+    const agentsWithoutWallet = db.query(
+      "SELECT id FROM agents WHERE wallet_address IS NULL"
+    ).all() as { id: string }[];
+
+    if (agentsWithoutWallet.length > 0) {
+      const updateStmt = db.prepare(
+        "UPDATE agents SET wallet_address = ?, encrypted_private_key = ? WHERE id = ?"
+      );
+      for (const row of agentsWithoutWallet) {
+        try {
+          const wallet = generateAgentWallet();
+          updateStmt.run(wallet.address, wallet.encryptedPrivateKey, row.id);
+          console.log(`[seed] Backfilled wallet for ${row.id}: ${wallet.address}`);
+        } catch (err) {
+          console.warn(`[seed] Failed to backfill wallet for ${row.id}:`, err);
+        }
+      }
+    }
+  } catch {
+    // wallet columns may not exist yet on first run — that's fine, schema will create them
+  }
 
   // Check if already seeded
   const count = db.query("SELECT COUNT(*) as cnt FROM agents").get() as { cnt: number };

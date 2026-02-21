@@ -12,6 +12,9 @@ export interface AgentEntity {
   status: "idle" | "processing" | "dormant";
   deployedChain: DeployedChain;
   inftTokenId?: string;       // INFT token ID from AgentNFT contract (0G chain)
+  walletAddress?: string;     // agent's own wallet address
+  conduitRegistered?: boolean; // whether on-chain Conduit registration succeeded
+  conduitTxHash?: string;     // the registerAgent tx hash
   createdAt: number;
   updatedAt: number;
 }

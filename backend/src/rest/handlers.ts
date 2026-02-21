@@ -1,8 +1,26 @@
-import { listAgents, getAgent, registerAgent } from "../services/agent.service.js";
+import { listAgents, getAgent, registerAgent, getAgentEncryptedKey, getAgentWalletAddress } from "../services/agent.service.js";
 import { listConnections } from "../services/connection.service.js";
 import { computeVitals } from "../services/vitals.service.js";
 import { listActivity } from "../services/activity.service.js";
 import { listTasks, getTask, createTask, dispatchTask, completeTask } from "../services/task.service.js";
+import {
+  fundAgentWallet,
+  conduitRegisterAgent,
+  conduitDeregister,
+  conduitUpdateName,
+  conduitUpdateChain,
+  conduitUpdatePrice,
+  conduitUpdateAbilities,
+  conduitRentAgent,
+  conduitAcceptJob,
+  conduitRejectJob,
+  conduitCompleteJob,
+  conduitRefundJob,
+  conduitCreateTask,
+  conduitCompleteTask,
+  conduitGetAgent,
+} from "../chains/conduit.service.js";
+import { getDb } from "../db/connection.js";
 import type { DeployedChain, AgentRole } from "../shared/types.js";
 
 type Handler = (req: Request, params: Record<string, string>) => Response | Promise<Response>;
@@ -66,6 +84,9 @@ export const handlers: Record<string, Handler> = {
       role: body.role as AgentRole,
       capabilities,
       deployedChain,
+      conduitName: body.conduitName as string | undefined,
+      conduitPrice: body.conduitPrice as string | undefined,
+      conduitAbilities: body.conduitAbilities as string | undefined,
     });
 
     return json(agent, 201);
@@ -151,5 +172,289 @@ export const handlers: Record<string, Handler> = {
 
       return json(task, 200);
     })();
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── Contract Endpoints ─────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET on-chain agent state
+  "GET /api/agents/:id/contract": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+    if (!agent.walletAddress) return json({ error: "Agent has no wallet" }, 400);
+
+    const onChain = await conduitGetAgent(agent.walletAddress);
+    return json({ walletAddress: agent.walletAddress, conduitRegistered: agent.conduitRegistered, ...onChain });
+  },
+
+  // Register agent on Conduit contract
+  "POST /api/agents/:id/contract/register": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    const name = body.name as string;
+    if (!name) return json({ error: "name is required" }, 400);
+
+    const result = await conduitRegisterAgent({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      name,
+      chain: (body.chain as string) ?? agent.deployedChain,
+      pricePerMinute: (body.pricePerMinute as string) ?? "0",
+      abilitiesMask: (body.abilitiesMask as string) ?? "0",
+    });
+
+    if (result.txHash !== "0x0") {
+      const db = getDb();
+      db.prepare("UPDATE agents SET conduit_registered = 1, conduit_tx_hash = ? WHERE id = ?")
+        .run(result.txHash, params.id);
+    }
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Deregister from contract
+  "POST /api/agents/:id/contract/deregister": async (_req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    const result = await conduitDeregister({ agentId: params.id, encryptedPrivateKey: encryptedKey });
+
+    if (result.txHash !== "0x0") {
+      const db = getDb();
+      db.prepare("UPDATE agents SET conduit_registered = 0 WHERE id = ?").run(params.id);
+    }
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Update on-chain agent properties
+  "POST /api/agents/:id/contract/update": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    const results: { field: string; txHash: string }[] = [];
+
+    if (body.name) {
+      const r = await conduitUpdateName({ agentId: params.id, encryptedPrivateKey: encryptedKey, name: body.name as string });
+      results.push({ field: "name", txHash: r.txHash });
+    }
+    if (body.chain) {
+      const r = await conduitUpdateChain({ agentId: params.id, encryptedPrivateKey: encryptedKey, chain: body.chain as string });
+      results.push({ field: "chain", txHash: r.txHash });
+    }
+    if (body.pricePerMinute) {
+      const r = await conduitUpdatePrice({ agentId: params.id, encryptedPrivateKey: encryptedKey, pricePerMinute: body.pricePerMinute as string });
+      results.push({ field: "pricePerMinute", txHash: r.txHash });
+    }
+    if (body.abilitiesMask) {
+      const r = await conduitUpdateAbilities({ agentId: params.id, encryptedPrivateKey: encryptedKey, abilitiesMask: body.abilitiesMask as string });
+      results.push({ field: "abilitiesMask", txHash: r.txHash });
+    }
+
+    return json({ updates: results });
+  },
+
+  // Rent another agent
+  "POST /api/agents/:id/contract/rent": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    // Resolve target agent's wallet address
+    const targetAgentId = body.targetAgentId as string;
+    let targetAddress = body.targetAddress as string | undefined;
+    if (!targetAddress && targetAgentId) {
+      targetAddress = getAgentWalletAddress(targetAgentId) ?? undefined;
+    }
+    if (!targetAddress) return json({ error: "Target agent wallet address not found" }, 400);
+
+    const result = await conduitRentAgent({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      targetAddress,
+      minutes: (body.minutes as number) ?? 1,
+      valueEth: (body.valueEth as string) ?? "0",
+    });
+
+    return json({ txHash: result.txHash, jobId: result.jobId });
+  },
+
+  // Accept a job
+  "POST /api/agents/:id/contract/accept-job": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.jobId === undefined) return json({ error: "jobId is required" }, 400);
+
+    const result = await conduitAcceptJob({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      jobId: body.jobId as number,
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Reject a job
+  "POST /api/agents/:id/contract/reject-job": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.jobId === undefined) return json({ error: "jobId is required" }, 400);
+
+    const result = await conduitRejectJob({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      jobId: body.jobId as number,
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Complete a job
+  "POST /api/agents/:id/contract/complete-job": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.jobId === undefined) return json({ error: "jobId is required" }, 400);
+
+    const result = await conduitCompleteJob({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      jobId: body.jobId as number,
+      attestation: (body.attestation as string) ?? "",
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Refund a job
+  "POST /api/agents/:id/contract/refund-job": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.jobId === undefined) return json({ error: "jobId is required" }, 400);
+
+    const result = await conduitRefundJob({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      jobId: body.jobId as number,
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Create on-chain task
+  "POST /api/agents/:id/contract/create-task": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    // Resolve assignee agent's wallet address
+    const assigneeAgentId = body.assigneeAgentId as string;
+    let assigneeAddress = body.assigneeAddress as string | undefined;
+    if (!assigneeAddress && assigneeAgentId) {
+      assigneeAddress = getAgentWalletAddress(assigneeAgentId) ?? undefined;
+    }
+    if (!assigneeAddress) return json({ error: "Assignee agent wallet address not found" }, 400);
+
+    const result = await conduitCreateTask({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      assigneeAddress,
+      paymentEth: (body.paymentEth as string) ?? "0",
+    });
+
+    return json({ txHash: result.txHash, taskId: result.taskId });
+  },
+
+  // Complete on-chain task
+  "POST /api/agents/:id/contract/complete-task": async (req, params) => {
+    let body: Record<string, unknown>;
+    try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+
+    const encryptedKey = getAgentEncryptedKey(params.id);
+    if (!encryptedKey) return json({ error: "Agent has no wallet" }, 400);
+
+    if (body.taskId === undefined) return json({ error: "taskId is required" }, 400);
+
+    const result = await conduitCompleteTask({
+      agentId: params.id,
+      encryptedPrivateKey: encryptedKey,
+      taskId: body.taskId as number,
+      reputationDelta: (body.reputationDelta as number) ?? 0,
+    });
+
+    return json({ txHash: result.txHash });
+  },
+
+  // Fund agent wallet with gas
+  "POST /api/agents/:id/fund": async (req, params) => {
+    const agent = getAgent(params.id);
+    if (!agent) return json({ error: "Agent not found" }, 404);
+    if (!agent.walletAddress) return json({ error: "Agent has no wallet" }, 400);
+
+    let amountEth = "0.01";
+    try {
+      const body = await req.json() as Record<string, unknown>;
+      if (body.amountEth) amountEth = body.amountEth as string;
+    } catch { /* use default */ }
+
+    const result = await fundAgentWallet(agent.walletAddress, amountEth);
+    return json({ txHash: result.txHash });
   },
 };

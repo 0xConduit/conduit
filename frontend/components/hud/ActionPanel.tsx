@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEconomyStore, type DeployedChain, type AgentRole, type Task } from '../../store/useEconomyStore';
+import { useEconomyStore, type DeployedChain, type AgentRole, type Task, type AgentEntity } from '../../store/useEconomyStore';
 
 // ── Chain metadata ─────────────────────────────────────────────────────────────
 const CHAINS: { value: DeployedChain; label: string; description: string; color: string; dot: string }[] = [
@@ -27,6 +27,36 @@ const inputCls  = "w-full bg-white/5 border border-white/10 rounded px-2.5 py-1.
 const selectCls = "w-full bg-[#0a0a0c] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white/80 focus:outline-none focus:border-white/30";
 const labelCls  = "block text-[10px] text-white/40 uppercase tracking-widest mb-1";
 const sectionCls = "border border-white/10 rounded-md p-3 space-y-2.5 bg-white/[0.02]";
+
+const stateBtn = (s: 'idle'|'loading'|'ok'|'err', label: string) =>
+    s === 'loading' ? 'loading…' : s === 'ok' ? '✓ done' : s === 'err' ? '✗ failed' : label;
+
+const actionBtnCls = (s: 'idle'|'loading'|'ok'|'err') =>
+    `w-full py-1.5 rounded text-xs font-semibold border transition-all disabled:opacity-40 ${
+        s === 'ok'  ? 'text-emerald-400 border-emerald-400/30' :
+        s === 'err' ? 'text-red-400 border-red-400/30' :
+        'border-white/20 text-white/70 hover:bg-white/10'
+    }`;
+
+function truncateAddr(addr: string): string {
+    if (addr.length <= 12) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+// ── TxToast — shows tx hash result ──────────────────────────────────────────────
+function TxToast({ txHash, onDismiss }: { txHash: string; onDismiss: () => void }) {
+    useEffect(() => {
+        const t = setTimeout(onDismiss, 6000);
+        return () => clearTimeout(t);
+    }, [onDismiss]);
+
+    return (
+        <div className="text-[10px] px-2 py-1.5 rounded border text-emerald-400 border-emerald-400/20 bg-emerald-400/5 space-y-1">
+            <p>✓ Transaction sent</p>
+            <p className="font-mono text-[9px] text-emerald-400/70 break-all select-all">{txHash}</p>
+        </div>
+    );
+}
 
 // ── ChainSelector ──────────────────────────────────────────────────────────────
 function ChainSelector({ value, onChange }: { value: DeployedChain; onChange: (c: DeployedChain) => void }) {
@@ -69,18 +99,33 @@ function RegisterAgentForm() {
     const [chain, setChain] = useState<DeployedChain>('base');
     const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [msg, setMsg]     = useState('');
+    const [walletAddr, setWalletAddr] = useState('');
+
+    // Optional Conduit registration fields
+    const [conduitName, setConduitName]       = useState('');
+    const [conduitPrice, setConduitPrice]     = useState('');
+    const [conduitAbilities, setConduitAbilities] = useState('');
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setState('loading');
         const capabilities = caps.split(',').map(s => s.trim()).filter(Boolean);
-        const agent = await registerAgent({ id: id.trim() || undefined, role, capabilities, deployedChain: chain });
+        const agent = await registerAgent({
+            id: id.trim() || undefined,
+            role,
+            capabilities,
+            deployedChain: chain,
+            conduitName: conduitName.trim() || undefined,
+            conduitPrice: conduitPrice.trim() || undefined,
+            conduitAbilities: conduitAbilities.trim() || undefined,
+        });
         if (agent) {
             setState('success');
             const tokenPart = agent.inftTokenId ? ` · INFT #${agent.inftTokenId}` : '';
             setMsg(`${agent.id}${tokenPart} · ${CHAIN_MAP[chain].label}`);
-            setId(''); setCaps('');
-            setTimeout(() => setState('idle'), 4000);
+            setWalletAddr(agent.walletAddress ?? '');
+            setId(''); setCaps(''); setConduitName(''); setConduitPrice(''); setConduitAbilities('');
+            setTimeout(() => setState('idle'), 6000);
         } else {
             setState('error');
             setMsg('Registration failed — is the backend running?');
@@ -110,6 +155,26 @@ function RegisterAgentForm() {
                 <p className="text-[9px] text-white/30 mt-0.5">comma-separated</p>
             </div>
             <ChainSelector value={chain} onChange={setChain} />
+
+            {/* Optional Conduit on-chain registration */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Conduit Contract (optional)</p>
+                <p className="text-[9px] text-white/25">Register on-chain at creation. Leave blank to skip.</p>
+                <div>
+                    <label className={labelCls}>Conduit Name (max 31 chars)</label>
+                    <input value={conduitName} onChange={e => setConduitName(e.target.value.slice(0, 31))} placeholder="my-agent" className={inputCls} maxLength={31} />
+                </div>
+                <div>
+                    <label className={labelCls}>Price per Minute (ETH)</label>
+                    <input value={conduitPrice} onChange={e => setConduitPrice(e.target.value)} placeholder="0.001" className={inputCls} />
+                </div>
+                <div>
+                    <label className={labelCls}>Abilities Mask</label>
+                    <input value={conduitAbilities} onChange={e => setConduitAbilities(e.target.value)} placeholder="0" className={inputCls} />
+                    <p className="text-[9px] text-white/25 mt-0.5">decimal bitmask</p>
+                </div>
+            </div>
+
             <button
                 type="submit"
                 disabled={state === 'loading'}
@@ -125,6 +190,9 @@ function RegisterAgentForm() {
                 <div className="text-[10px] px-2 py-1.5 rounded border text-emerald-400 border-emerald-400/20 bg-emerald-400/5 space-y-1">
                     <p>✓ Agent registered on-chain</p>
                     <p className="font-mono text-[9px] text-emerald-400/70 break-all">{msg}</p>
+                    {walletAddr && (
+                        <p className="font-mono text-[9px] text-emerald-400/60 break-all select-all">Wallet: {walletAddr}</p>
+                    )}
                     <p className="text-[9px] text-emerald-400/50">INFT minted · 0G Chain (Newton)</p>
                 </div>
             )}
@@ -215,9 +283,6 @@ function TasksPanel() {
     }
     useEffect(() => () => { if (demoRef.current) clearInterval(demoRef.current); }, []);
 
-    const stateBtn = (s: 'idle'|'loading'|'ok'|'err', label: string) =>
-        s === 'loading' ? 'loading…' : s === 'ok' ? '✓ done' : s === 'err' ? '✗ failed' : label;
-
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         if (!title || !reqId) return;
@@ -282,11 +347,7 @@ function TasksPanel() {
                     <button
                         type="submit"
                         disabled={createState === 'loading'}
-                        className={`w-full py-1.5 rounded text-xs font-semibold border transition-all ${
-                            createState === 'ok'  ? 'text-emerald-400 border-emerald-400/30' :
-                            createState === 'err' ? 'text-red-400 border-red-400/30' :
-                            'border-white/20 text-white/70 hover:bg-white/10'
-                        }`}
+                        className={actionBtnCls(createState)}
                     >
                         {stateBtn(createState, 'Create Task')}
                     </button>
@@ -316,11 +377,7 @@ function TasksPanel() {
                     <button
                         type="submit"
                         disabled={dispState === 'loading' || !dispTaskId}
-                        className={`w-full py-1.5 rounded text-xs font-semibold border transition-all disabled:opacity-40 ${
-                            dispState === 'ok'  ? 'text-emerald-400 border-emerald-400/30' :
-                            dispState === 'err' ? 'text-red-400 border-red-400/30' :
-                            'border-white/20 text-white/70 hover:bg-white/10'
-                        }`}
+                        className={actionBtnCls(dispState)}
                     >
                         {stateBtn(dispState, 'Dispatch')}
                     </button>
@@ -348,11 +405,7 @@ function TasksPanel() {
                     <button
                         type="submit"
                         disabled={compState === 'loading' || !compTaskId}
-                        className={`w-full py-1.5 rounded text-xs font-semibold border transition-all disabled:opacity-40 ${
-                            compState === 'ok'  ? 'text-emerald-400 border-emerald-400/30' :
-                            compState === 'err' ? 'text-red-400 border-red-400/30' :
-                            'border-white/20 text-white/70 hover:bg-white/10'
-                        }`}
+                        className={actionBtnCls(compState)}
                     >
                         {stateBtn(compState, 'Complete + Attest')}
                     </button>
@@ -398,8 +451,455 @@ function TaskLog() {
     );
 }
 
+// ── Contract Panel ─────────────────────────────────────────────────────────────
+type ContractSubTab = 'register' | 'update' | 'jobs' | 'tasks';
+
+function ContractPanel() {
+    const store = useEconomyStore();
+    const agents = store.agents;
+    const agentList = Object.values(agents);
+    const agentIds = Object.keys(agents);
+
+    const [selectedAgentId, setSelectedAgentId] = useState(agentIds[0] || '');
+    const [subTab, setSubTab] = useState<ContractSubTab>('register');
+    const [txResult, setTxResult] = useState<string | null>(null);
+
+    // Keep selection valid
+    useEffect(() => {
+        if (agentIds.length > 0 && !agentIds.includes(selectedAgentId)) setSelectedAgentId(agentIds[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agentIds.join(',')]);
+
+    const agent = agents[selectedAgentId] as AgentEntity | undefined;
+
+    if (agentList.length === 0) {
+        return <p className="text-[10px] text-white/30 text-center py-6">No agents yet — register one first.</p>;
+    }
+
+    const subTabs: { id: ContractSubTab; label: string }[] = [
+        { id: 'register', label: 'Register' },
+        { id: 'update',   label: 'Update' },
+        { id: 'jobs',     label: 'Jobs' },
+        { id: 'tasks',    label: 'Tasks' },
+    ];
+
+    return (
+        <div className="space-y-3">
+            {/* Agent selector */}
+            <div>
+                <label className={labelCls}>Agent</label>
+                <select value={selectedAgentId} onChange={e => setSelectedAgentId(e.target.value)} className={selectCls}>
+                    {agentList.map(a => (
+                        <option key={a.id} value={a.id}>
+                            {a.id}{a.walletAddress ? ` (${truncateAddr(a.walletAddress)})` : ''}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Wallet info */}
+            {agent && (
+                <div className="border border-white/10 rounded px-2.5 py-2 bg-white/[0.02] space-y-1">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-white/40 uppercase tracking-widest">Wallet</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${
+                            agent.conduitRegistered
+                                ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                                : 'text-white/30 border-white/10 bg-white/5'
+                        }`}>
+                            {agent.conduitRegistered ? 'Registered' : 'Not Registered'}
+                        </span>
+                    </div>
+                    {agent.walletAddress ? (
+                        <p className="font-mono text-[9px] text-white/50 break-all select-all">{agent.walletAddress}</p>
+                    ) : (
+                        <p className="text-[9px] text-white/25">No wallet generated</p>
+                    )}
+                </div>
+            )}
+
+            {/* Sub-tabs */}
+            <div className="flex gap-1">
+                {subTabs.map(t => (
+                    <button
+                        key={t.id}
+                        onClick={() => setSubTab(t.id)}
+                        className={`flex-1 py-1.5 text-[9px] uppercase tracking-widest font-semibold rounded border transition-colors ${
+                            subTab === t.id
+                                ? 'text-white border-white/30 bg-white/10'
+                                : 'text-white/30 border-white/10 bg-white/[0.02] hover:text-white/60'
+                        }`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Sub-tab content */}
+            {subTab === 'register' && <ContractRegisterSub agentId={selectedAgentId} onTx={setTxResult} />}
+            {subTab === 'update' && <ContractUpdateSub agentId={selectedAgentId} onTx={setTxResult} />}
+            {subTab === 'jobs' && <ContractJobsSub agentId={selectedAgentId} onTx={setTxResult} />}
+            {subTab === 'tasks' && <ContractTasksSub agentId={selectedAgentId} onTx={setTxResult} />}
+
+            {/* Tx result toast */}
+            {txResult && <TxToast txHash={txResult} onDismiss={() => setTxResult(null)} />}
+        </div>
+    );
+}
+
+// ── Contract > Register sub-tab ────────────────────────────────────────────────
+function ContractRegisterSub({ agentId, onTx }: { agentId: string; onTx: (hash: string) => void }) {
+    const store = useEconomyStore();
+    const [name, setName] = useState('');
+    const [chain, setChain] = useState('base');
+    const [price, setPrice] = useState('0');
+    const [abilities, setAbilities] = useState('0');
+    const [regState, setRegState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [fundState, setFundState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [deregState, setDeregState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    async function handleFund() {
+        setFundState('loading');
+        const result = await store.fundAgent(agentId);
+        setFundState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setFundState('idle'), 2000);
+    }
+
+    async function handleRegister(e: React.FormEvent) {
+        e.preventDefault();
+        if (!name) return;
+        setRegState('loading');
+        const result = await store.contractRegister(agentId, { name, chain, pricePerMinute: price, abilitiesMask: abilities });
+        setRegState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setRegState('idle'), 2000);
+    }
+
+    async function handleDeregister() {
+        setDeregState('loading');
+        const result = await store.contractDeregister(agentId);
+        setDeregState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setDeregState('idle'), 2000);
+    }
+
+    return (
+        <div className="space-y-3">
+            <button
+                onClick={handleFund}
+                disabled={fundState === 'loading'}
+                className={actionBtnCls(fundState)}
+            >
+                {stateBtn(fundState, 'Fund Gas (0.01 ETH)')}
+            </button>
+
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Register On-Chain</p>
+                <form onSubmit={handleRegister} className="space-y-2">
+                    <div>
+                        <label className={labelCls}>Name (max 31 chars)</label>
+                        <input value={name} onChange={e => setName(e.target.value.slice(0, 31))} placeholder="my-agent" className={inputCls} maxLength={31} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Chain</label>
+                        <select value={chain} onChange={e => setChain(e.target.value)} className={selectCls}>
+                            <option value="base">Base (0)</option>
+                            <option value="hedera">Hedera (1)</option>
+                            <option value="zerog">0G (2)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Price per Minute (ETH)</label>
+                        <input value={price} onChange={e => setPrice(e.target.value)} placeholder="0.001" className={inputCls} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Abilities Mask</label>
+                        <input value={abilities} onChange={e => setAbilities(e.target.value)} placeholder="0" className={inputCls} />
+                    </div>
+                    <button type="submit" disabled={regState === 'loading' || !name} className={actionBtnCls(regState)}>
+                        {stateBtn(regState, 'Register On-Chain')}
+                    </button>
+                </form>
+            </div>
+
+            <button
+                onClick={handleDeregister}
+                disabled={deregState === 'loading'}
+                className={`w-full py-1.5 rounded text-xs font-semibold border transition-all disabled:opacity-40 ${
+                    deregState === 'ok'  ? 'text-emerald-400 border-emerald-400/30' :
+                    deregState === 'err' ? 'text-red-400 border-red-400/30' :
+                    'border-red-400/30 text-red-400/70 hover:bg-red-400/5'
+                }`}
+            >
+                {stateBtn(deregState, 'Deregister')}
+            </button>
+        </div>
+    );
+}
+
+// ── Contract > Update sub-tab ──────────────────────────────────────────────────
+function ContractUpdateSub({ agentId, onTx }: { agentId: string; onTx: (hash: string) => void }) {
+    const store = useEconomyStore();
+    const [name, setName] = useState('');
+    const [chain, setChain] = useState('');
+    const [price, setPrice] = useState('');
+    const [abilities, setAbilities] = useState('');
+    const [state, setState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    async function handleUpdate(e: React.FormEvent) {
+        e.preventDefault();
+        setState('loading');
+        const params: Record<string, string> = {};
+        if (name) params.name = name;
+        if (chain) params.chain = chain;
+        if (price) params.pricePerMinute = price;
+        if (abilities) params.abilitiesMask = abilities;
+
+        if (Object.keys(params).length === 0) {
+            setState('err');
+            setTimeout(() => setState('idle'), 2000);
+            return;
+        }
+
+        const result = await store.contractUpdate(agentId, params);
+        setState(result ? 'ok' : 'err');
+        if (result && result.updates.length > 0) {
+            onTx(result.updates[result.updates.length - 1].txHash);
+        }
+        setTimeout(() => setState('idle'), 2000);
+    }
+
+    return (
+        <div className={sectionCls}>
+            <p className="text-[10px] text-white/40 uppercase tracking-widest">Update On-Chain</p>
+            <p className="text-[9px] text-white/25">Only fill fields you want to change.</p>
+            <form onSubmit={handleUpdate} className="space-y-2">
+                <div>
+                    <label className={labelCls}>Name</label>
+                    <input value={name} onChange={e => setName(e.target.value.slice(0, 31))} placeholder="" className={inputCls} maxLength={31} />
+                </div>
+                <div>
+                    <label className={labelCls}>Chain</label>
+                    <select value={chain} onChange={e => setChain(e.target.value)} className={selectCls}>
+                        <option value="">— no change —</option>
+                        <option value="base">Base (0)</option>
+                        <option value="hedera">Hedera (1)</option>
+                        <option value="zerog">0G (2)</option>
+                    </select>
+                </div>
+                <div>
+                    <label className={labelCls}>Price per Minute (ETH)</label>
+                    <input value={price} onChange={e => setPrice(e.target.value)} placeholder="" className={inputCls} />
+                </div>
+                <div>
+                    <label className={labelCls}>Abilities Mask</label>
+                    <input value={abilities} onChange={e => setAbilities(e.target.value)} placeholder="" className={inputCls} />
+                </div>
+                <button type="submit" disabled={state === 'loading'} className={actionBtnCls(state)}>
+                    {stateBtn(state, 'Update')}
+                </button>
+            </form>
+        </div>
+    );
+}
+
+// ── Contract > Jobs sub-tab ────────────────────────────────────────────────────
+function ContractJobsSub({ agentId, onTx }: { agentId: string; onTx: (hash: string) => void }) {
+    const store = useEconomyStore();
+    const agents = store.agents;
+    const agentIds = Object.keys(agents);
+
+    // Rent
+    const [targetId, setTargetId] = useState(agentIds[0] || '');
+    const [mins, setMins] = useState('1');
+    const [valueEth, setValueEth] = useState('0.01');
+    const [rentState, setRentState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    // Job actions
+    const [jobId, setJobId] = useState('');
+    const [attestation, setAttestation] = useState('');
+    const [acceptState, setAcceptState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [rejectState, setRejectState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [completeState, setCompleteState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+    const [refundState, setRefundState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    useEffect(() => {
+        if (agentIds.length > 0 && !agentIds.includes(targetId)) setTargetId(agentIds[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agentIds.join(',')]);
+
+    async function handleRent(e: React.FormEvent) {
+        e.preventDefault();
+        setRentState('loading');
+        const result = await store.contractRentAgent(agentId, { targetAgentId: targetId, minutes: parseInt(mins), valueEth });
+        setRentState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setRentState('idle'), 2000);
+    }
+
+    async function handleJobAction(action: 'accept' | 'reject' | 'complete' | 'refund') {
+        if (!jobId) return;
+        const id = parseInt(jobId);
+        const setters = { accept: setAcceptState, reject: setRejectState, complete: setCompleteState, refund: setRefundState };
+        setters[action]('loading');
+        let result: { txHash: string } | null = null;
+        switch (action) {
+            case 'accept': result = await store.contractAcceptJob(agentId, id); break;
+            case 'reject': result = await store.contractRejectJob(agentId, id); break;
+            case 'complete': result = await store.contractCompleteJob(agentId, id, attestation); break;
+            case 'refund': result = await store.contractRefundJob(agentId, id); break;
+        }
+        setters[action](result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setters[action]('idle'), 2000);
+    }
+
+    return (
+        <div className="space-y-3">
+            {/* Rent Agent */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Rent Agent</p>
+                <form onSubmit={handleRent} className="space-y-2">
+                    <div>
+                        <label className={labelCls}>Target Agent</label>
+                        <select value={targetId} onChange={e => setTargetId(e.target.value)} className={selectCls}>
+                            {agentIds.filter(id => id !== agentId).map(id => (
+                                <option key={id} value={id}>{id}{agents[id]?.walletAddress ? ` (${truncateAddr(agents[id].walletAddress!)})` : ''}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Minutes</label>
+                        <input type="number" value={mins} onChange={e => setMins(e.target.value)} min="1" className={inputCls} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Value (ETH)</label>
+                        <input value={valueEth} onChange={e => setValueEth(e.target.value)} placeholder="0.01" className={inputCls} />
+                    </div>
+                    <button type="submit" disabled={rentState === 'loading'} className={actionBtnCls(rentState)}>
+                        {stateBtn(rentState, 'Rent Agent')}
+                    </button>
+                </form>
+            </div>
+
+            {/* Job Actions */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Job Actions</p>
+                <div>
+                    <label className={labelCls}>Job ID</label>
+                    <input value={jobId} onChange={e => setJobId(e.target.value)} placeholder="0" className={inputCls} />
+                </div>
+                <div>
+                    <label className={labelCls}>Attestation (for complete)</label>
+                    <input value={attestation} onChange={e => setAttestation(e.target.value)} placeholder="task completed successfully" className={inputCls} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                    <button onClick={() => handleJobAction('accept')} disabled={acceptState === 'loading' || !jobId} className={actionBtnCls(acceptState)}>
+                        {stateBtn(acceptState, 'Accept')}
+                    </button>
+                    <button onClick={() => handleJobAction('reject')} disabled={rejectState === 'loading' || !jobId} className={actionBtnCls(rejectState)}>
+                        {stateBtn(rejectState, 'Reject')}
+                    </button>
+                    <button onClick={() => handleJobAction('complete')} disabled={completeState === 'loading' || !jobId} className={actionBtnCls(completeState)}>
+                        {stateBtn(completeState, 'Complete')}
+                    </button>
+                    <button onClick={() => handleJobAction('refund')} disabled={refundState === 'loading' || !jobId} className={actionBtnCls(refundState)}>
+                        {stateBtn(refundState, 'Refund')}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Contract > Tasks sub-tab ───────────────────────────────────────────────────
+function ContractTasksSub({ agentId, onTx }: { agentId: string; onTx: (hash: string) => void }) {
+    const store = useEconomyStore();
+    const agents = store.agents;
+    const agentIds = Object.keys(agents);
+
+    // Create task
+    const [assigneeId, setAssigneeId] = useState(agentIds[0] || '');
+    const [paymentEth, setPaymentEth] = useState('0.01');
+    const [createState, setCreateState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    // Complete task
+    const [taskId, setTaskId] = useState('');
+    const [repDelta, setRepDelta] = useState('1');
+    const [completeState, setCompleteState] = useState<'idle'|'loading'|'ok'|'err'>('idle');
+
+    useEffect(() => {
+        if (agentIds.length > 0 && !agentIds.includes(assigneeId)) setAssigneeId(agentIds[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agentIds.join(',')]);
+
+    async function handleCreateTask(e: React.FormEvent) {
+        e.preventDefault();
+        setCreateState('loading');
+        const result = await store.contractCreateTask(agentId, { assigneeAgentId: assigneeId, paymentEth });
+        setCreateState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setCreateState('idle'), 2000);
+    }
+
+    async function handleCompleteTask(e: React.FormEvent) {
+        e.preventDefault();
+        if (!taskId) return;
+        setCompleteState('loading');
+        const result = await store.contractCompleteTask(agentId, parseInt(taskId), parseInt(repDelta));
+        setCompleteState(result ? 'ok' : 'err');
+        if (result) onTx(result.txHash);
+        setTimeout(() => setCompleteState('idle'), 2000);
+    }
+
+    return (
+        <div className="space-y-3">
+            {/* Create Task */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Create On-Chain Task</p>
+                <form onSubmit={handleCreateTask} className="space-y-2">
+                    <div>
+                        <label className={labelCls}>Assignee Agent</label>
+                        <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)} className={selectCls}>
+                            {agentIds.filter(id => id !== agentId).map(id => (
+                                <option key={id} value={id}>{id}{agents[id]?.walletAddress ? ` (${truncateAddr(agents[id].walletAddress!)})` : ''}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelCls}>Payment (ETH)</label>
+                        <input value={paymentEth} onChange={e => setPaymentEth(e.target.value)} placeholder="0.01" className={inputCls} />
+                    </div>
+                    <button type="submit" disabled={createState === 'loading'} className={actionBtnCls(createState)}>
+                        {stateBtn(createState, 'Create Task')}
+                    </button>
+                </form>
+            </div>
+
+            {/* Complete Task */}
+            <div className={sectionCls}>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Complete On-Chain Task</p>
+                <form onSubmit={handleCompleteTask} className="space-y-2">
+                    <div>
+                        <label className={labelCls}>Task ID</label>
+                        <input value={taskId} onChange={e => setTaskId(e.target.value)} placeholder="0" className={inputCls} />
+                    </div>
+                    <div>
+                        <label className={labelCls}>Reputation Delta</label>
+                        <input type="number" value={repDelta} onChange={e => setRepDelta(e.target.value)} className={inputCls} />
+                    </div>
+                    <button type="submit" disabled={completeState === 'loading' || !taskId} className={actionBtnCls(completeState)}>
+                        {stateBtn(completeState, 'Complete Task')}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
 // ── Main ActionPanel ───────────────────────────────────────────────────────────
-type Tab = 'register' | 'tasks' | 'log';
+type Tab = 'register' | 'tasks' | 'log' | 'contract';
 
 export default function ActionPanel() {
     const { actionPanelOpen, setActionPanelOpen, backendAvailable } = useEconomyStore();
@@ -409,6 +909,7 @@ export default function ActionPanel() {
         { id: 'register', label: 'Register' },
         { id: 'tasks',    label: 'Tasks' },
         { id: 'log',      label: 'Log' },
+        { id: 'contract', label: 'Contract' },
     ];
 
     return (
@@ -461,6 +962,7 @@ export default function ActionPanel() {
                             {tab === 'register' && <RegisterAgentForm />}
                             {tab === 'tasks'    && <TasksPanel />}
                             {tab === 'log'      && <TaskLog />}
+                            {tab === 'contract' && <ContractPanel />}
                         </div>
                     </motion.div>
                 )}
